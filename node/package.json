@@ -1,0 +1,16 @@
+{
+  "name": "nuxt-analyzer-parser",
+  "version": "1.0.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "esbuild parser.ts --bundle --platform=node --target=node22 --outfile=dist/parser.bundle.js --external:velocityjs --external:dustjs-linkedin --external:atpl --external:liquor --external:twig --external:ejs --external:eco --external:jazz --external:jqtpl --external:hamljs --external:hamlet --external:whiskers --external:haml-coffee --external:hogan.js --external:templayed --external:handlebars --external:underscore --external:lodash --external:walrus --external:mustache --external:just --external:ect --external:mote --external:toffee --external:dot --external:bracket-template --external:ractive --external:htmling --external:babel-core --external:plates --external:react-dom/server --external:react --external:vash --external:slm --external:marko --external:teacup/lib/express --external:coffee-script --external:squirrelly --external:twing"
+  },
+  "dependencies": {
+    "@vue/compiler-sfc": "^3.5.13"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.2"
+  }
+}

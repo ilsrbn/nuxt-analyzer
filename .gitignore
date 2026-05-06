@@ -1,0 +1,29 @@
+# Build outputs
+bin/
+assets/parser.bundle.js
+node/dist/
+
+# Dependencies
+node/node_modules/
+node/package-lock.json
+
+# Go cache
+.gocache/
+
+# Temp / scratch directories
+.claude/
+.codex-tmp/
+.tmp-parser-review/
+tmp-parser-abs/
+tmp-parser-fix/
+tmp-parser-test/
+
+# Leftover root binary
+impact-map.exe
+
+# Editor temp files
+*.go.[0-9]*
+*.ts.[0-9]*
+
+# Docs (local session notes, not for repo)
+docs/
