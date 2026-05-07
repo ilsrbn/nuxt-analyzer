@@ -177,6 +177,10 @@ function extractProvidedInjections(content: string): string[] {
 
   const provideCallRe = /(?<![\w$.])(?:(?:nuxtApp|app)|useNuxtApp\(\))\s*\.\s*provide\s*\(/g
   while ((match = provideCallRe.exec(searchable)) !== null) {
+    if (!isRootLikeProviderMatch(searchable, match.index)) {
+      continue
+    }
+
     const openParen = match.index + match[0].length - 1
     const closeParen = findMatchingParen(searchable, openParen)
     if (closeParen === -1) {
@@ -184,7 +188,7 @@ function extractProvidedInjections(content: string): string[] {
       continue
     }
 
-    const args = splitTopLevel(content.slice(openParen + 1, closeParen), ',')
+    const args = splitTopLevel(stripJsComments(content.slice(openParen + 1, closeParen)), ',')
     const firstArg = args[0]?.trim()
     const staticName = firstArg ? staticStringLiteralContent(firstArg) : undefined
     found.push(staticName === undefined ? dynamicInjectionProvider : normalizeInjectionName(staticName))
@@ -192,6 +196,18 @@ function extractProvidedInjections(content: string): string[] {
   }
 
   return dedupe(found)
+}
+
+function isRootLikeProviderMatch(content: string, index: number): boolean {
+  for (let i = index - 1; i >= 0; i--) {
+    if (/\s/.test(content[i])) {
+      continue
+    }
+
+    return content[i] !== '.' && !/[\w$]/.test(content[i])
+  }
+
+  return true
 }
 
 function extractInjectionUsages(
@@ -273,6 +289,64 @@ function stripJsCommentsAndStrings(content: string): string {
   return stripped
 }
 
+function stripJsComments(content: string): string {
+  let stripped = ''
+  let quote: string | null = null
+  let escaped = false
+
+  for (let i = 0; i < content.length; i++) {
+    const char = content[i]
+    const next = content[i + 1]
+
+    if (quote) {
+      if (escaped) {
+        escaped = false
+      } else if (char === '\\') {
+        escaped = true
+      } else if (char === quote) {
+        quote = null
+      }
+      stripped += char
+      continue
+    }
+
+    if (char === '/' && next === '/') {
+      stripped += '  '
+      i += 2
+      while (i < content.length && content[i] !== '\n') {
+        stripped += ' '
+        i++
+      }
+      if (i < content.length) {
+        stripped += '\n'
+      }
+      continue
+    }
+
+    if (char === '/' && next === '*') {
+      stripped += '  '
+      i += 2
+      while (i < content.length && !(content[i] === '*' && content[i + 1] === '/')) {
+        stripped += content[i] === '\n' ? '\n' : ' '
+        i++
+      }
+      if (i < content.length) {
+        stripped += '  '
+        i++
+      }
+      continue
+    }
+
+    if (char === '"' || char === "'" || char === '`') {
+      quote = char
+    }
+
+    stripped += char
+  }
+
+  return stripped
+}
+
 function isQuotedObjectKeyMatch(content: string, index: number, length: number): boolean {
   const before = content[index - 1]
   const after = content[index + length]
@@ -288,7 +362,7 @@ function normalizeInjectionName(name: string): string {
 }
 
 function collectProvideObjectKeys(body: string, out: string[]): void {
-  for (const property of splitTopLevel(body, ',')) {
+  for (const property of splitTopLevel(stripJsComments(body), ',')) {
     const trimmed = property.trim()
     if (trimmed.length === 0 || trimmed.startsWith('[')) {
       continue
