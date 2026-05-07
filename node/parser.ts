@@ -161,12 +161,13 @@ function extractAutoImportUsages(content: string, autoImportNames: string[]): st
 
 function extractProvidedInjections(content: string): string[] {
   const found: string[] = []
+  const searchable = stripJsCommentsAndStrings(content)
   const provideObjectRe = /\bprovide\s*:\s*\{/g
   let match: RegExpExecArray | null
 
-  while ((match = provideObjectRe.exec(content)) !== null) {
-    const openBrace = content.indexOf('{', match.index)
-    const closeBrace = findMatchingBrace(content, openBrace)
+  while ((match = provideObjectRe.exec(searchable)) !== null) {
+    const openBrace = searchable.indexOf('{', match.index)
+    const closeBrace = findMatchingBrace(searchable, openBrace)
     if (closeBrace === -1) {
       continue
     }
@@ -174,10 +175,10 @@ function extractProvidedInjections(content: string): string[] {
     provideObjectRe.lastIndex = closeBrace + 1
   }
 
-  const provideCallRe = /\b(?:(?:nuxtApp|app)|useNuxtApp\(\))\s*\.\s*provide\s*\(/g
-  while ((match = provideCallRe.exec(content)) !== null) {
+  const provideCallRe = /(?<![\w$.])(?:(?:nuxtApp|app)|useNuxtApp\(\))\s*\.\s*provide\s*\(/g
+  while ((match = provideCallRe.exec(searchable)) !== null) {
     const openParen = match.index + match[0].length - 1
-    const closeParen = findMatchingParen(content, openParen)
+    const closeParen = findMatchingParen(searchable, openParen)
     if (closeParen === -1) {
       found.push(dynamicInjectionProvider)
       continue
