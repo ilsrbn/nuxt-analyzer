@@ -11,7 +11,7 @@ func TestBridgeParseReturnsResults(t *testing.T) {
 	b := &Bridge{
 		parserPath: "parser.bundle.js",
 		runCmd: func(name string, args []string, input []byte) ([]byte, error) {
-			return []byte(`{"results":[{"path":"/a.vue","type":"component","imports":["./foo"],"templateRefs":["MyComp"],"dynamicComponents":["resolveComponent(name)"],"error":null}]}`), nil
+			return []byte(`{"results":[{"path":"/a.vue","type":"component","imports":["./foo"],"templateRefs":["MyComp"],"dynamicComponents":["resolveComponent(name)"],"usedAutoImports":["useAuth"],"providedInjections":["api","*"],"usedInjections":["api"],"error":null}]}`), nil
 		},
 	}
 
@@ -39,6 +39,12 @@ func TestBridgeParseReturnsResults(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got.DynamicComponents, []string{"resolveComponent(name)"}) {
 		t.Fatalf("DynamicComponents = %#v, want %#v", got.DynamicComponents, []string{"resolveComponent(name)"})
+	}
+	if !reflect.DeepEqual(got.ProvidedInjections, []string{"api", "*"}) {
+		t.Fatalf("ProvidedInjections = %#v, want %#v", got.ProvidedInjections, []string{"api", "*"})
+	}
+	if !reflect.DeepEqual(got.UsedInjections, []string{"api"}) {
+		t.Fatalf("UsedInjections = %#v, want %#v", got.UsedInjections, []string{"api"})
 	}
 	if got.Error != nil {
 		t.Fatalf("Error = %v, want nil", *got.Error)

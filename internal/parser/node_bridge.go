@@ -15,13 +15,15 @@ import (
 
 // ParsedFile is the result of parsing one file via the Node bridge.
 type ParsedFile struct {
-	Path              string   `json:"path"`
-	Type              string   `json:"type"`
-	Imports           []string `json:"imports"`
-	TemplateRefs      []string `json:"templateRefs"`
-	DynamicComponents []string `json:"dynamicComponents"`
-	UsedAutoImports   []string `json:"usedAutoImports"`
-	Error             *string  `json:"error"`
+	Path               string   `json:"path"`
+	Type               string   `json:"type"`
+	Imports            []string `json:"imports"`
+	TemplateRefs       []string `json:"templateRefs"`
+	DynamicComponents  []string `json:"dynamicComponents"`
+	UsedAutoImports    []string `json:"usedAutoImports"`
+	ProvidedInjections []string `json:"providedInjections"`
+	UsedInjections     []string `json:"usedInjections"`
+	Error              *string  `json:"error"`
 }
 
 type runCmdFunc func(name string, args []string, input []byte) ([]byte, error)
