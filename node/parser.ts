@@ -112,7 +112,10 @@ function parseVue(filePath: string, content: string, autoImportNames: string[]):
       dynamicComponents: dedupe(dynamicComponents),
       usedAutoImports: extractAutoImportUsages(scriptContent, autoImportNames),
       providedInjections: extractProvidedInjections(scriptContent),
-      usedInjections: extractInjectionUsages(fullContent),
+      usedInjections: dedupe([
+        ...extractInjectionUsages(scriptContent, { ignoreJsCommentsAndStrings: true }),
+        ...extractInjectionUsages(templateContent),
+      ]),
       error: null,
     }
   } catch (error) {
@@ -132,7 +135,7 @@ function parseTS(filePath: string, content: string, autoImportNames: string[]): 
     dynamicComponents: [],
     usedAutoImports: extractAutoImportUsages(content, autoImportNames),
     providedInjections: extractProvidedInjections(content),
-    usedInjections: extractInjectionUsages(content),
+    usedInjections: extractInjectionUsages(content, { ignoreJsCommentsAndStrings: true }),
     error: null,
   }
 }
@@ -171,9 +174,9 @@ function extractProvidedInjections(content: string): string[] {
     provideObjectRe.lastIndex = closeBrace + 1
   }
 
-  const provideCallRe = /\.\s*provide\s*\(/g
+  const provideCallRe = /\b(?:(?:nuxtApp|app)|useNuxtApp\(\))\s*\.\s*provide\s*\(/g
   while ((match = provideCallRe.exec(content)) !== null) {
-    const openParen = content.indexOf('(', match.index)
+    const openParen = match.index + match[0].length - 1
     const closeParen = findMatchingParen(content, openParen)
     if (closeParen === -1) {
       found.push(dynamicInjectionProvider)
@@ -190,19 +193,83 @@ function extractProvidedInjections(content: string): string[] {
   return dedupe(found)
 }
 
-function extractInjectionUsages(content: string): string[] {
+function extractInjectionUsages(
+  content: string,
+  options: { ignoreJsCommentsAndStrings?: boolean } = {}
+): string[] {
   const found: string[] = []
+  const searchable = options.ignoreJsCommentsAndStrings ? stripJsCommentsAndStrings(content) : content
   const injectionRe = /(?<![\w$])\$([A-Za-z_][\w$]*)\b/g
   let match: RegExpExecArray | null
 
-  while ((match = injectionRe.exec(content)) !== null) {
-    if (isQuotedObjectKeyMatch(content, match.index, match[0].length)) {
+  while ((match = injectionRe.exec(searchable)) !== null) {
+    if (isQuotedObjectKeyMatch(searchable, match.index, match[0].length)) {
       continue
     }
     found.push(normalizeInjectionName(match[0]))
   }
 
   return dedupe(found)
+}
+
+function stripJsCommentsAndStrings(content: string): string {
+  let stripped = ''
+  let quote: string | null = null
+  let escaped = false
+
+  for (let i = 0; i < content.length; i++) {
+    const char = content[i]
+    const next = content[i + 1]
+
+    if (quote) {
+      if (escaped) {
+        escaped = false
+      } else if (char === '\\') {
+        escaped = true
+      } else if (char === quote) {
+        quote = null
+      }
+      stripped += char === '\n' ? '\n' : ' '
+      continue
+    }
+
+    if (char === '/' && next === '/') {
+      stripped += '  '
+      i += 2
+      while (i < content.length && content[i] !== '\n') {
+        stripped += ' '
+        i++
+      }
+      if (i < content.length) {
+        stripped += '\n'
+      }
+      continue
+    }
+
+    if (char === '/' && next === '*') {
+      stripped += '  '
+      i += 2
+      while (i < content.length && !(content[i] === '*' && content[i + 1] === '/')) {
+        stripped += content[i] === '\n' ? '\n' : ' '
+        i++
+      }
+      if (i < content.length) {
+        stripped += '  '
+        i++
+      }
+      continue
+    }
+
+    if (char === '"' || char === "'" || char === '`') {
+      quote = char
+      stripped += ' '
+      continue
+    }
+
+    stripped += char
+  }
+
+  return stripped
 }
 
 function isQuotedObjectKeyMatch(content: string, index: number, length: number): boolean {
@@ -221,13 +288,15 @@ function normalizeInjectionName(name: string): string {
 
 function collectProvideObjectKeys(body: string, out: string[]): void {
   for (const property of splitTopLevel(body, ',')) {
-    const colonIndex = topLevelIndexOf(property, ':')
-    if (colonIndex === -1) {
+    const trimmed = property.trim()
+    if (trimmed.length === 0 || trimmed.startsWith('[')) {
       continue
     }
 
-    const rawKey = property.slice(0, colonIndex).trim()
-    if (rawKey.startsWith('[')) {
+    const colonIndex = topLevelIndexOf(property, ':')
+    const rawKey = colonIndex === -1 ? staticMethodOrShorthandKey(trimmed) : property.slice(0, colonIndex).trim()
+
+    if (rawKey === undefined || rawKey.startsWith('[')) {
       continue
     }
 
@@ -236,6 +305,20 @@ function collectProvideObjectKeys(body: string, out: string[]): void {
       out.push(normalizeInjectionName(staticKey))
     }
   }
+}
+
+function staticMethodOrShorthandKey(property: string): string | undefined {
+  const shorthand = property.match(/^[$A-Za-z_][\w$]*$/)?.[0]
+  if (shorthand) {
+    return shorthand
+  }
+
+  const method = property.match(/^((?:[$A-Za-z_][\w$]*)|(?:(['"`])[\s\S]*?\2))\s*\(/)?.[1]
+  if (method) {
+    return method
+  }
+
+  return undefined
 }
 
 function findMatchingBrace(content: string, openIndex: number): number {
