@@ -24,6 +24,8 @@ interface ParsedFile {
   templateRefs: string[]
   dynamicComponents: string[]
   usedAutoImports: string[]
+  providedInjections: string[]
+  usedInjections: string[]
   error: string | null
 }
 
@@ -93,11 +95,13 @@ function parseVue(filePath: string, content: string, autoImportNames: string[]):
     const scriptContent = [descriptor.script?.content ?? '', descriptor.scriptSetup?.content ?? '']
       .filter((part) => part.length > 0)
       .join('\n')
+    const templateContent = descriptor.template?.content ?? ''
+    const fullContent = [scriptContent, templateContent].filter((part) => part.length > 0).join('\n')
 
     extractImports(scriptContent, imports)
 
-    if (descriptor.template?.content) {
-      extractTemplateRefs(filePath, descriptor.template.content, templateRefs, dynamicComponents)
+    if (templateContent) {
+      extractTemplateRefs(filePath, templateContent, templateRefs, dynamicComponents)
     }
 
     return {
@@ -107,6 +111,8 @@ function parseVue(filePath: string, content: string, autoImportNames: string[]):
       templateRefs: dedupe(templateRefs),
       dynamicComponents: dedupe(dynamicComponents),
       usedAutoImports: extractAutoImportUsages(scriptContent, autoImportNames),
+      providedInjections: extractProvidedInjections(scriptContent),
+      usedInjections: extractInjectionUsages(fullContent),
       error: null,
     }
   } catch (error) {
@@ -125,9 +131,13 @@ function parseTS(filePath: string, content: string, autoImportNames: string[]): 
     templateRefs: [],
     dynamicComponents: [],
     usedAutoImports: extractAutoImportUsages(content, autoImportNames),
+    providedInjections: extractProvidedInjections(content),
+    usedInjections: extractInjectionUsages(content),
     error: null,
   }
 }
+
+const dynamicInjectionProvider = '*'
 
 // extractAutoImportUsages returns the subset of autoImportNames that appear as
 // standalone identifiers in content (not as property accesses like `.name`).
@@ -144,6 +154,210 @@ function extractAutoImportUsages(content: string, autoImportNames: string[]): st
     }
   }
   return found
+}
+
+function extractProvidedInjections(content: string): string[] {
+  const found: string[] = []
+  const provideObjectRe = /\bprovide\s*:\s*\{/g
+  let match: RegExpExecArray | null
+
+  while ((match = provideObjectRe.exec(content)) !== null) {
+    const openBrace = content.indexOf('{', match.index)
+    const closeBrace = findMatchingBrace(content, openBrace)
+    if (closeBrace === -1) {
+      continue
+    }
+    collectProvideObjectKeys(content.slice(openBrace + 1, closeBrace), found)
+    provideObjectRe.lastIndex = closeBrace + 1
+  }
+
+  const provideCallRe = /\.\s*provide\s*\(/g
+  while ((match = provideCallRe.exec(content)) !== null) {
+    const openParen = content.indexOf('(', match.index)
+    const closeParen = findMatchingParen(content, openParen)
+    if (closeParen === -1) {
+      found.push(dynamicInjectionProvider)
+      continue
+    }
+
+    const args = splitTopLevel(content.slice(openParen + 1, closeParen), ',')
+    const firstArg = args[0]?.trim()
+    const staticName = firstArg ? staticStringLiteralContent(firstArg) : undefined
+    found.push(staticName === undefined ? dynamicInjectionProvider : normalizeInjectionName(staticName))
+    provideCallRe.lastIndex = closeParen + 1
+  }
+
+  return dedupe(found)
+}
+
+function extractInjectionUsages(content: string): string[] {
+  const found: string[] = []
+  const injectionRe = /(?<![\w$])\$([A-Za-z_][\w$]*)\b/g
+  let match: RegExpExecArray | null
+
+  while ((match = injectionRe.exec(content)) !== null) {
+    if (isQuotedObjectKeyMatch(content, match.index, match[0].length)) {
+      continue
+    }
+    found.push(normalizeInjectionName(match[0]))
+  }
+
+  return dedupe(found)
+}
+
+function isQuotedObjectKeyMatch(content: string, index: number, length: number): boolean {
+  const before = content[index - 1]
+  const after = content[index + length]
+  if ((before !== '"' && before !== "'") || after !== before) {
+    return false
+  }
+
+  return content.slice(index + length + 1).trimStart().startsWith(':')
+}
+
+function normalizeInjectionName(name: string): string {
+  return name.trim().replace(/^\$+/, '')
+}
+
+function collectProvideObjectKeys(body: string, out: string[]): void {
+  for (const property of splitTopLevel(body, ',')) {
+    const colonIndex = topLevelIndexOf(property, ':')
+    if (colonIndex === -1) {
+      continue
+    }
+
+    const rawKey = property.slice(0, colonIndex).trim()
+    if (rawKey.startsWith('[')) {
+      continue
+    }
+
+    const staticKey = staticStringLiteralContent(rawKey) ?? rawKey.match(/^[$A-Za-z_][\w$]*$/)?.[0]
+    if (staticKey !== undefined) {
+      out.push(normalizeInjectionName(staticKey))
+    }
+  }
+}
+
+function findMatchingBrace(content: string, openIndex: number): number {
+  return findMatchingDelimiter(content, openIndex, '{', '}')
+}
+
+function findMatchingParen(content: string, openIndex: number): number {
+  return findMatchingDelimiter(content, openIndex, '(', ')')
+}
+
+function findMatchingDelimiter(content: string, openIndex: number, open: string, close: string): number {
+  if (openIndex < 0 || content[openIndex] !== open) {
+    return -1
+  }
+
+  let depth = 0
+  let quote: string | null = null
+  let escaped = false
+
+  for (let i = openIndex; i < content.length; i++) {
+    const char = content[i]
+    const next = content[i + 1]
+
+    if (quote) {
+      if (escaped) {
+        escaped = false
+      } else if (char === '\\') {
+        escaped = true
+      } else if (char === quote) {
+        quote = null
+      }
+      continue
+    }
+
+    if (char === '/' && next === '/') {
+      const newline = content.indexOf('\n', i + 2)
+      i = newline === -1 ? content.length : newline
+      continue
+    }
+    if (char === '/' && next === '*') {
+      const commentEnd = content.indexOf('*/', i + 2)
+      i = commentEnd === -1 ? content.length : commentEnd + 1
+      continue
+    }
+    if (char === '"' || char === "'" || char === '`') {
+      quote = char
+      continue
+    }
+    if (char === open) {
+      depth++
+      continue
+    }
+    if (char === close) {
+      depth--
+      if (depth === 0) {
+        return i
+      }
+    }
+  }
+
+  return -1
+}
+
+function splitTopLevel(content: string, delimiter: string): string[] {
+  const parts: string[] = []
+  let start = 0
+  let parenDepth = 0
+  let braceDepth = 0
+  let bracketDepth = 0
+  let quote: string | null = null
+  let escaped = false
+
+  for (let i = 0; i < content.length; i++) {
+    const char = content[i]
+
+    if (quote) {
+      if (escaped) {
+        escaped = false
+      } else if (char === '\\') {
+        escaped = true
+      } else if (char === quote) {
+        quote = null
+      }
+      continue
+    }
+
+    if (char === '"' || char === "'" || char === '`') {
+      quote = char
+      continue
+    }
+    if (char === '(') parenDepth++
+    if (char === ')') parenDepth--
+    if (char === '{') braceDepth++
+    if (char === '}') braceDepth--
+    if (char === '[') bracketDepth++
+    if (char === ']') bracketDepth--
+
+    if (char === delimiter && parenDepth === 0 && braceDepth === 0 && bracketDepth === 0) {
+      parts.push(content.slice(start, i))
+      start = i + 1
+    }
+  }
+
+  parts.push(content.slice(start))
+  return parts
+}
+
+function topLevelIndexOf(content: string, needle: string): number {
+  const beforeNeedle = splitTopLevel(content, needle)[0]
+  return beforeNeedle.length === content.length ? -1 : beforeNeedle.length
+}
+
+function staticStringLiteralContent(value: string): string | undefined {
+  const trimmed = value.trim()
+  const match = trimmed.match(/^(['"`])([\s\S]*)\1$/)
+  if (!match) {
+    return undefined
+  }
+  if (match[1] === '`' && /\$\{/.test(match[2])) {
+    return undefined
+  }
+  return match[2]
 }
 
 function escapeRegExp(s: string): string {
@@ -338,6 +552,8 @@ function empty(filePath: string, type: ParsedType, error: string): ParsedFile {
     templateRefs: [],
     dynamicComponents: [],
     usedAutoImports: [],
+    providedInjections: [],
+    usedInjections: [],
     error,
   }
 }
