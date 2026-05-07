@@ -62373,7 +62373,7 @@ function parseVue(filePath, content, autoImportNames) {
       providedInjections: extractProvidedInjections(scriptContent),
       usedInjections: dedupe([
         ...extractInjectionUsages(scriptContent, { ignoreJsCommentsAndStrings: true }),
-        ...extractInjectionUsages(templateContent)
+        ...extractInjectionUsages(stripHtmlComments(templateContent))
       ]),
       error: null
     };
@@ -62397,6 +62397,24 @@ function parseTS(filePath, content, autoImportNames) {
   };
 }
 var dynamicInjectionProvider = "*";
+var ignoredInjectionUsageNames = /* @__PURE__ */ new Set([
+  "event",
+  "attrs",
+  "slots",
+  "refs",
+  "props",
+  "emit",
+  "el",
+  "data",
+  "options",
+  "parent",
+  "root",
+  "nextTick",
+  "forceUpdate",
+  "route",
+  "router",
+  "config"
+]);
 function extractAutoImportUsages(content, autoImportNames) {
   if (autoImportNames.length === 0) {
     return [];
@@ -62461,9 +62479,16 @@ function extractInjectionUsages(content, options = {}) {
     if (isQuotedObjectKeyMatch(searchable, match.index, match[0].length)) {
       continue;
     }
-    found.push(normalizeInjectionName(match[0]));
+    const name = normalizeInjectionName(match[0]);
+    if (ignoredInjectionUsageNames.has(name)) {
+      continue;
+    }
+    found.push(name);
   }
   return dedupe(found);
+}
+function stripHtmlComments(content) {
+  return content.replace(/<!--[\s\S]*?-->/g, (comment) => comment.replace(/[^\n]/g, " "));
 }
 function stripJsCommentsAndStrings(content) {
   let stripped = "";

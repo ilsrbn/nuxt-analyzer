@@ -114,7 +114,7 @@ function parseVue(filePath: string, content: string, autoImportNames: string[]):
       providedInjections: extractProvidedInjections(scriptContent),
       usedInjections: dedupe([
         ...extractInjectionUsages(scriptContent, { ignoreJsCommentsAndStrings: true }),
-        ...extractInjectionUsages(templateContent),
+        ...extractInjectionUsages(stripHtmlComments(templateContent)),
       ]),
       error: null,
     }
@@ -141,6 +141,24 @@ function parseTS(filePath: string, content: string, autoImportNames: string[]): 
 }
 
 const dynamicInjectionProvider = '*'
+const ignoredInjectionUsageNames = new Set([
+  'event',
+  'attrs',
+  'slots',
+  'refs',
+  'props',
+  'emit',
+  'el',
+  'data',
+  'options',
+  'parent',
+  'root',
+  'nextTick',
+  'forceUpdate',
+  'route',
+  'router',
+  'config',
+])
 
 // extractAutoImportUsages returns the subset of autoImportNames that appear as
 // standalone identifiers in content (not as property accesses like `.name`).
@@ -223,10 +241,18 @@ function extractInjectionUsages(
     if (isQuotedObjectKeyMatch(searchable, match.index, match[0].length)) {
       continue
     }
-    found.push(normalizeInjectionName(match[0]))
+    const name = normalizeInjectionName(match[0])
+    if (ignoredInjectionUsageNames.has(name)) {
+      continue
+    }
+    found.push(name)
   }
 
   return dedupe(found)
+}
+
+function stripHtmlComments(content: string): string {
+  return content.replace(/<!--[\s\S]*?-->/g, (comment) => comment.replace(/[^\n]/g, ' '))
 }
 
 function stripJsCommentsAndStrings(content: string): string {
