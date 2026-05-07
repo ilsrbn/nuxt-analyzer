@@ -87,7 +87,7 @@ func NodeID(repoRelPath string) string {
 }
 
 func InferType(relPath string) NodeType {
-	path := filepath.ToSlash(relPath)
+	path := normalizeRelPath(relPath)
 	base := filepath.Base(path)
 
 	if base == "app.vue" {
@@ -119,8 +119,12 @@ func InferType(relPath string) NodeType {
 }
 
 func NodeName(relPath string) string {
-	base := filepath.Base(filepath.ToSlash(relPath))
+	base := filepath.Base(normalizeRelPath(relPath))
 	return strings.TrimSuffix(base, filepath.Ext(base))
+}
+
+func normalizeRelPath(path string) string {
+	return strings.ReplaceAll(filepath.ToSlash(path), "\\", "/")
 }
 
 func (g *Graph) AddNode(n *Node) {
