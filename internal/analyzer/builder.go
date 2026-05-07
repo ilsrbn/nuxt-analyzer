@@ -19,6 +19,8 @@ type Builder struct {
 	ProjectRoot string
 }
 
+const dynamicInjectionProvider = "*"
+
 type parseBridge interface {
 	Parse(files []string, autoImportNames []string) ([]parser.ParsedFile, error)
 }
@@ -143,6 +145,59 @@ func (b Builder) buildFromParsed(files []FileInfo, parsed []parser.ParsedFile, a
 			}
 			existingEdges[key] = struct{}{}
 			graph.AddEdge(Edge{From: fromID, To: toID, Kind: EdgeAutoImportUses, Confidence: ConfMedium})
+		}
+	}
+
+	pluginProviders := make(map[string][]string)
+	dynamicPluginProviders := make([]string, 0)
+
+	for _, parsedFile := range parsed {
+		info, ok := infoByAbs[parsedFile.Path]
+		if !ok || info.Type != NodeTypePlugin {
+			continue
+		}
+		pluginID := NodeID(info.RelPath)
+		for _, provided := range parsedFile.ProvidedInjections {
+			if provided == "" {
+				continue
+			}
+			if provided == dynamicInjectionProvider {
+				dynamicPluginProviders = append(dynamicPluginProviders, pluginID)
+				continue
+			}
+			pluginProviders[provided] = append(pluginProviders[provided], pluginID)
+		}
+	}
+
+	for _, parsedFile := range parsed {
+		info, ok := infoByAbs[parsedFile.Path]
+		if !ok {
+			continue
+		}
+		fromID := NodeID(info.RelPath)
+		for _, used := range parsedFile.UsedInjections {
+			for _, toID := range pluginProviders[used] {
+				if fromID == toID {
+					continue
+				}
+				key := fromID + ":" + toID
+				if _, exists := existingEdges[key]; exists {
+					continue
+				}
+				existingEdges[key] = struct{}{}
+				graph.AddEdge(Edge{From: fromID, To: toID, Kind: EdgeInjects, Confidence: ConfHigh})
+			}
+			for _, toID := range dynamicPluginProviders {
+				if fromID == toID {
+					continue
+				}
+				key := fromID + ":" + toID
+				if _, exists := existingEdges[key]; exists {
+					continue
+				}
+				existingEdges[key] = struct{}{}
+				graph.AddEdge(Edge{From: fromID, To: toID, Kind: EdgeInjects, Confidence: ConfLow})
+			}
 		}
 	}
 

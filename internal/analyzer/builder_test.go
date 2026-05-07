@@ -247,6 +247,101 @@ func TestBuilderBuild_AutoImportDeduplicatesAgainstStaticImport(t *testing.T) {
 	}
 }
 
+func TestBuilderBuild_PluginInjectionEdgesFromStaticProvide(t *testing.T) {
+	root := filepath.Join(`C:\repo`, `app`)
+	apiAbs := filepath.Join(root, "plugins", "api.ts")
+	indexAbs := filepath.Join(root, "pages", "index.vue")
+
+	files := []FileInfo{
+		{AbsPath: apiAbs, RelPath: "plugins/api.ts", Type: NodeTypePlugin},
+		{AbsPath: indexAbs, RelPath: "pages/index.vue", Type: NodeTypePage},
+	}
+
+	parsed := []parser.ParsedFile{
+		{Path: apiAbs, Type: "plugin", ProvidedInjections: []string{"api"}},
+		{Path: indexAbs, Type: "page", UsedInjections: []string{"api"}},
+	}
+
+	graph, buildErrs, err := (Builder{ProjectRoot: root}).buildFromParsed(files, parsed, nil)
+	if err != nil {
+		t.Fatalf("buildFromParsed() error = %v", err)
+	}
+	if len(buildErrs) != 0 {
+		t.Fatalf("len(buildErrs) = %d, want 0", len(buildErrs))
+	}
+
+	assertEdge(t, graph, Edge{
+		From:       NodeID("pages/index.vue"),
+		To:         NodeID("plugins/api.ts"),
+		Kind:       EdgeInjects,
+		Confidence: ConfHigh,
+	})
+}
+
+func TestBuilderBuild_PluginInjectionEdgesFromDynamicProvide(t *testing.T) {
+	root := filepath.Join(`C:\repo`, `app`)
+	dynamicAbs := filepath.Join(root, "plugins", "dynamic.ts")
+	indexAbs := filepath.Join(root, "pages", "index.vue")
+
+	files := []FileInfo{
+		{AbsPath: dynamicAbs, RelPath: "plugins/dynamic.ts", Type: NodeTypePlugin},
+		{AbsPath: indexAbs, RelPath: "pages/index.vue", Type: NodeTypePage},
+	}
+
+	parsed := []parser.ParsedFile{
+		{Path: dynamicAbs, Type: "plugin", ProvidedInjections: []string{"*"}},
+		{Path: indexAbs, Type: "page", UsedInjections: []string{"api"}},
+	}
+
+	graph, _, err := (Builder{ProjectRoot: root}).buildFromParsed(files, parsed, nil)
+	if err != nil {
+		t.Fatalf("buildFromParsed() error = %v", err)
+	}
+
+	assertEdge(t, graph, Edge{
+		From:       NodeID("pages/index.vue"),
+		To:         NodeID("plugins/dynamic.ts"),
+		Kind:       EdgeInjects,
+		Confidence: ConfLow,
+	})
+}
+
+func TestBuilderBuild_PluginInjectionEdgesSkipSelfLoopsAndDeduplicate(t *testing.T) {
+	root := filepath.Join(`C:\repo`, `app`)
+	apiAbs := filepath.Join(root, "plugins", "api.ts")
+	indexAbs := filepath.Join(root, "pages", "index.vue")
+
+	files := []FileInfo{
+		{AbsPath: apiAbs, RelPath: "plugins/api.ts", Type: NodeTypePlugin},
+		{AbsPath: indexAbs, RelPath: "pages/index.vue", Type: NodeTypePage},
+	}
+
+	parsed := []parser.ParsedFile{
+		{Path: apiAbs, Type: "plugin", ProvidedInjections: []string{"api"}, UsedInjections: []string{"api"}},
+		{Path: indexAbs, Type: "page", UsedInjections: []string{"api", "api"}},
+	}
+
+	graph, _, err := (Builder{ProjectRoot: root}).buildFromParsed(files, parsed, nil)
+	if err != nil {
+		t.Fatalf("buildFromParsed() error = %v", err)
+	}
+
+	apiID := NodeID("plugins/api.ts")
+	indexID := NodeID("pages/index.vue")
+	count := 0
+	for _, e := range graph.Edges {
+		if e.From == apiID && e.To == apiID {
+			t.Fatalf("unexpected self-loop edge %#v", e)
+		}
+		if e.From == indexID && e.To == apiID && e.Kind == EdgeInjects {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("expected 1 injection edge from index to api plugin, got %d", count)
+	}
+}
+
 func TestResolveToNodeID(t *testing.T) {
 	nodes := map[string]*Node{
 		NodeID("components/Button.vue"): {
