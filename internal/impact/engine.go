@@ -88,67 +88,67 @@ func (e *Engine) Analyze(g *analyzer.Graph, changedIDs []string) *Result {
 		q := &queueState{items: make([]queueItem, 0, len(g.Nodes)+1)}
 		q.items = append(q.items, queueItem{id: sourceID, path: []string{sourceID}})
 		for q.head < len(q.items) {
-		curr := q.items[q.head]
-		q.head++
+			curr := q.items[q.head]
+			q.head++
 
-		for _, depID := range g.ReverseDeps[curr.id] {
-			if _, ok := sourceVisited[depID]; ok {
-				continue
-			}
-			sourceVisited[depID] = struct{}{}
+			for _, depID := range g.ReverseDeps[curr.id] {
+				if _, ok := sourceVisited[depID]; ok {
+					continue
+				}
+				sourceVisited[depID] = struct{}{}
 
-			if _, ok := changedSet[depID]; ok {
-				continue
-			}
+				if _, ok := changedSet[depID]; ok {
+					continue
+				}
 
-			nextPath := make([]string, len(curr.path)+1)
-			copy(nextPath, curr.path)
-			nextPath[len(curr.path)] = depID
+				nextPath := make([]string, len(curr.path)+1)
+				copy(nextPath, curr.path)
+				nextPath[len(curr.path)] = depID
 
-			result.Paths = append(result.Paths, ImpactPath{
-				Source: sourceID,
-				Target: depID,
-				Nodes:  nextPath,
-			})
+				result.Paths = append(result.Paths, ImpactPath{
+					Source: sourceID,
+					Target: depID,
+					Nodes:  nextPath,
+				})
 
-			if _, ok := affectedNodes[depID]; !ok {
-				affectedNodes[depID] = struct{}{}
-				result.AffectedNodes = append(result.AffectedNodes, depID)
-			}
+				if _, ok := affectedNodes[depID]; !ok {
+					affectedNodes[depID] = struct{}{}
+					result.AffectedNodes = append(result.AffectedNodes, depID)
+				}
 
-			if n := g.Nodes[depID]; n != nil {
-				n.IsAffected = true
-				switch n.Type {
-				case analyzer.NodeTypePage:
-					if _, ok := affectedPages[depID]; !ok {
-						affectedPages[depID] = struct{}{}
-						result.AffectedPages = append(result.AffectedPages, depID)
-					}
-					if n.Route != nil {
-						if _, ok := affectedRoutes[depID]; !ok {
-							affectedRoutes[depID] = struct{}{}
-							layout := ""
-							if n.Layout != nil {
-								layout = *n.Layout
+				if n := g.Nodes[depID]; n != nil {
+					n.IsAffected = true
+					switch n.Type {
+					case analyzer.NodeTypePage:
+						if _, ok := affectedPages[depID]; !ok {
+							affectedPages[depID] = struct{}{}
+							result.AffectedPages = append(result.AffectedPages, depID)
+						}
+						if n.Route != nil {
+							if _, ok := affectedRoutes[depID]; !ok {
+								affectedRoutes[depID] = struct{}{}
+								layout := ""
+								if n.Layout != nil {
+									layout = *n.Layout
+								}
+								result.AffectedRoutes = append(result.AffectedRoutes, RouteRef{
+									NodeID: depID,
+									Route:  *n.Route,
+									Layout: layout,
+								})
 							}
-							result.AffectedRoutes = append(result.AffectedRoutes, RouteRef{
-								NodeID: depID,
-								Route:  *n.Route,
-								Layout: layout,
-							})
+						}
+					case analyzer.NodeTypeLayout:
+						if _, ok := affectedLayouts[depID]; !ok {
+							affectedLayouts[depID] = struct{}{}
+							result.AffectedLayouts = append(result.AffectedLayouts, depID)
 						}
 					}
-				case analyzer.NodeTypeLayout:
-					if _, ok := affectedLayouts[depID]; !ok {
-						affectedLayouts[depID] = struct{}{}
-						result.AffectedLayouts = append(result.AffectedLayouts, depID)
-					}
 				}
-			}
 
-			q.items = append(q.items, queueItem{id: depID, path: nextPath})
+				q.items = append(q.items, queueItem{id: depID, path: nextPath})
+			}
 		}
-	}
 	}
 
 	return result

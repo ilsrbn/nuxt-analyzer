@@ -163,9 +163,8 @@ func (g *Graph) AddEdge(e Edge) {
 		g.ReverseDeps = make(map[string][]string)
 	}
 
-	key := e.From + ":" + e.To + ":" + string(e.Kind)
 	for _, existing := range g.Edges {
-		if existing.From+":"+existing.To+":"+string(existing.Kind) == key {
+		if existing.From == e.From && existing.To == e.To && existing.Kind == e.Kind {
 			return
 		}
 	}

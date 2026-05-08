@@ -319,6 +319,11 @@ function stripJsCommentsAndStrings(content: string): string {
       continue
     }
 
+    if (quote && char === '`' && next === '$') {
+      stripped += char
+      continue
+    }
+
     stripped += char
   }
 
@@ -559,12 +564,11 @@ function escapeRegExp(s: string): string {
 }
 
 function extractImports(content: string, out: string[]): void {
-  const searchable = stripJsCommentsAndStrings(content)
   const staticImportRe = /(?:^|[^\w$])import\s+(?:type\s+)?(?:[^'";\n]+?\s+from\s+)?['"]([^'"]+)['"]/gm
   const dynamicImportRe = /import\s*\(\s*['"]([^'"]+)['"]\s*\)/g
 
-  collectMatches(staticImportRe, searchable, out)
-  collectMatches(dynamicImportRe, searchable, out)
+  collectMatches(staticImportRe, content, out)
+  collectMatches(dynamicImportRe, content, out)
 }
 
 function collectMatches(pattern: RegExp, content: string, out: string[]): void {
