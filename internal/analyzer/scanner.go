@@ -3,6 +3,7 @@ package analyzer
 import (
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -23,6 +24,12 @@ func Scan(projectRoot string, includeTests bool) ([]FileInfo, error) {
 	files := make([]FileInfo, 0)
 	err = filepath.WalkDir(absRoot, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
+			if os.IsPermission(walkErr) || os.IsNotExist(walkErr) {
+				if d.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
 			return walkErr
 		}
 
@@ -81,7 +88,7 @@ func shouldSkipDir(name string) bool {
 
 func isSourceFile(path string) bool {
 	switch strings.ToLower(filepath.Ext(path)) {
-	case ".vue", ".ts":
+	case ".vue", ".ts", ".js", ".mjs", ".cjs", ".tsx", ".jsx":
 		return true
 	default:
 		return false

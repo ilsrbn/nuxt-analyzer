@@ -29,6 +29,9 @@ func (p *TypeScriptParser) ParseSource(path string, source []byte, autoImportNam
 
 	tree := parser.ParseCtx(context.Background(), source, nil)
 	if tree == nil || tree.RootNode() == nil {
+		if tree != nil {
+			tree.Close()
+		}
 		return emptyParsedFile(path, inferParsedType(path), fmt.Errorf("parse typescript source"))
 	}
 	defer tree.Close()

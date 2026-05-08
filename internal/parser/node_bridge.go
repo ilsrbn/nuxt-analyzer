@@ -25,8 +25,15 @@ type Bridge struct {
 }
 
 // newNodeBridge extracts the embedded parser bundle into a temp file and returns a Bridge.
-func newNodeBridge() (*Bridge, error) {
+// Returns cleanup function that should be called when done.
+func newNodeBridge() (*Bridge, func(), error) {
 	b := &Bridge{}
+	cleanup := func() {
+		if b.tempDir != "" {
+			os.RemoveAll(b.tempDir)
+		}
+	}
+
 	b.initOnce.Do(func() {
 		dir, err := os.MkdirTemp("", "nuxt-analyzer-parser-*")
 		if err != nil {
@@ -45,7 +52,11 @@ func newNodeBridge() (*Bridge, error) {
 		b.runCmd = defaultRunCmd
 	})
 
-	return b, b.initErr
+	if b.initErr != nil {
+		return nil, cleanup, b.initErr
+	}
+
+	return b, cleanup, nil
 }
 
 // Cleanup removes the temporary directory used for the parser bundle.

@@ -10,18 +10,22 @@ type HybridBridge struct {
 	node     *Bridge
 	ts       *TypeScriptParser
 	readFile func(string) ([]byte, error)
+	CleanupFn func()
 }
 
 func NewHybrid() (*HybridBridge, error) {
-	node, err := newNodeBridge()
+	node, cleanup, err := newNodeBridge()
 	if err != nil {
+		cleanup()
 		return nil, err
 	}
-	return &HybridBridge{
+	h := &HybridBridge{
 		node:     node,
 		ts:       NewTypeScriptParser(),
 		readFile: os.ReadFile,
-	}, nil
+	}
+	h.CleanupFn = cleanup
+	return h, nil
 }
 
 // New returns the parser bridge used by the analyzer.
@@ -32,6 +36,9 @@ func New() (*HybridBridge, error) {
 func (h *HybridBridge) Cleanup() {
 	if h != nil && h.node != nil {
 		h.node.Cleanup()
+	}
+	if h != nil && h.CleanupFn != nil {
+		h.CleanupFn()
 	}
 }
 

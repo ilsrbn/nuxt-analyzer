@@ -70,6 +70,11 @@ func (e *Engine) Analyze(g *analyzer.Graph, changedIDs []string) *Result {
 		path []string
 	}
 
+	type queueState struct {
+		items []queueItem
+		head  int
+	}
+
 	for _, id := range result.ChangedNodes {
 		if n := g.Nodes[id]; n != nil {
 			n.IsChanged = true
@@ -80,10 +85,10 @@ func (e *Engine) Analyze(g *analyzer.Graph, changedIDs []string) *Result {
 		sourceVisited := make(map[string]struct{}, len(g.Nodes))
 		sourceVisited[sourceID] = struct{}{}
 
-		queue := []queueItem{{id: sourceID, path: []string{sourceID}}}
-		for len(queue) > 0 {
-			curr := queue[0]
-			queue = queue[1:]
+		q := &queueState{items: []queueItem{{id: sourceID, path: []string{sourceID}}}}
+		for q.head < len(q.items) {
+			curr := q.items[q.head]
+			q.head++
 
 			for _, depID := range g.ReverseDeps[curr.id] {
 				if _, ok := sourceVisited[depID]; ok {
@@ -140,7 +145,7 @@ func (e *Engine) Analyze(g *analyzer.Graph, changedIDs []string) *Result {
 					}
 				}
 
-				queue = append(queue, queueItem{id: depID, path: nextPath})
+				q.items = append(q.items, queueItem{id: depID, path: nextPath})
 			}
 		}
 	}
