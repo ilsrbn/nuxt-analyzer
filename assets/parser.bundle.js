@@ -62339,7 +62339,7 @@ function parseFile(filePath, autoImportNames) {
     if (filePath.endsWith(".vue")) {
       return parseVue(filePath, content, autoImportNames);
     }
-    return parseTS(filePath, content, autoImportNames);
+    return empty(filePath, inferredType, `unsupported file extension for Vue parser: ${filePath}`);
   } catch (error) {
     return empty(filePath, inferredType, errorMessage(error));
   }
@@ -62380,21 +62380,6 @@ function parseVue(filePath, content, autoImportNames) {
   } catch (error) {
     return empty(filePath, inferredType, errorMessage(error));
   }
-}
-function parseTS(filePath, content, autoImportNames) {
-  const imports = [];
-  extractImports(content, imports);
-  return {
-    path: filePath,
-    type: inferType(filePath),
-    imports: dedupe(imports),
-    templateRefs: [],
-    dynamicComponents: [],
-    usedAutoImports: extractAutoImportUsages(content, autoImportNames),
-    providedInjections: extractProvidedInjections(content),
-    usedInjections: extractInjectionUsages(content, { ignoreJsCommentsAndStrings: true }),
-    error: null
-  };
 }
 var dynamicInjectionProvider = "*";
 var ignoredInjectionUsageNames = /* @__PURE__ */ new Set([

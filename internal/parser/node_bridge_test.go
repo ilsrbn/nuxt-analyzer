@@ -68,7 +68,7 @@ func TestBridgeParseSendsCorrectInput(t *testing.T) {
 		},
 	}
 
-	if _, err := b.Parse([]string{"/a.vue", "/b.ts"}, nil); err != nil {
+	if _, err := b.Parse([]string{"/a.vue", "/b.vue"}, nil); err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
 
@@ -85,8 +85,8 @@ func TestBridgeParseSendsCorrectInput(t *testing.T) {
 	if err := json.Unmarshal(received, &payload); err != nil {
 		t.Fatalf("json.Unmarshal(input) error = %v", err)
 	}
-	if !reflect.DeepEqual(payload.Files, []string{"/a.vue", "/b.ts"}) {
-		t.Fatalf("payload.Files = %#v, want %#v", payload.Files, []string{"/a.vue", "/b.ts"})
+	if !reflect.DeepEqual(payload.Files, []string{"/a.vue", "/b.vue"}) {
+		t.Fatalf("payload.Files = %#v, want %#v", payload.Files, []string{"/a.vue", "/b.vue"})
 	}
 }
 

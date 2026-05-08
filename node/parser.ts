@@ -72,7 +72,7 @@ function parseFile(filePath: string, autoImportNames: string[]): ParsedFile {
       return parseVue(filePath, content, autoImportNames)
     }
 
-    return parseTS(filePath, content, autoImportNames)
+    return empty(filePath, inferredType, `unsupported file extension for Vue parser: ${filePath}`)
   } catch (error) {
     return empty(filePath, inferredType, errorMessage(error))
   }
@@ -120,23 +120,6 @@ function parseVue(filePath: string, content: string, autoImportNames: string[]):
     }
   } catch (error) {
     return empty(filePath, inferredType, errorMessage(error))
-  }
-}
-
-function parseTS(filePath: string, content: string, autoImportNames: string[]): ParsedFile {
-  const imports: string[] = []
-  extractImports(content, imports)
-
-  return {
-    path: filePath,
-    type: inferType(filePath),
-    imports: dedupe(imports),
-    templateRefs: [],
-    dynamicComponents: [],
-    usedAutoImports: extractAutoImportUsages(content, autoImportNames),
-    providedInjections: extractProvidedInjections(content),
-    usedInjections: extractInjectionUsages(content, { ignoreJsCommentsAndStrings: true }),
-    error: null,
   }
 }
 
