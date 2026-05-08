@@ -4,17 +4,14 @@ project_name: impact-map
 
 before:
   hooks:
-    - npm --prefix node install
-    - npm --prefix node run build
-    - mkdir -p assets
-    - cp node/dist/parser.bundle.js assets/parser.bundle.js
+    - sh -c 'if command -v npm >/dev/null 2>&1; then npm --prefix node install && npm --prefix node run build && mkdir -p assets && cp node/dist/parser.bundle.js assets/parser.bundle.js; else test -f assets/parser.bundle.js; fi'
 
 builds:
   - id: impact-map
     main: ./cmd/impact-map
     binary: impact-map
     env:
-      - CGO_ENABLED=0
+      - CGO_ENABLED=1
     goos:
       - darwin
       - linux
@@ -22,6 +19,37 @@ builds:
     goarch:
       - amd64
       - arm64
+    overrides:
+      - goos: darwin
+        goarch: amd64
+        env:
+          - CC=o64-clang
+          - CXX=o64-clang++
+      - goos: darwin
+        goarch: arm64
+        env:
+          - CC=oa64-clang
+          - CXX=oa64-clang++
+      - goos: linux
+        goarch: amd64
+        env:
+          - CC=x86_64-linux-gnu-gcc
+          - CXX=x86_64-linux-gnu-g++
+      - goos: linux
+        goarch: arm64
+        env:
+          - CC=aarch64-linux-gnu-gcc
+          - CXX=aarch64-linux-gnu-g++
+      - goos: windows
+        goarch: amd64
+        env:
+          - CC=x86_64-w64-mingw32-gcc
+          - CXX=x86_64-w64-mingw32-g++
+      - goos: windows
+        goarch: arm64
+        env:
+          - CC=/llvm-mingw/bin/aarch64-w64-mingw32-gcc
+          - CXX=/llvm-mingw/bin/aarch64-w64-mingw32-g++
 
 archives:
   - id: impact-map

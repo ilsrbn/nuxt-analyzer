@@ -68,7 +68,8 @@ function parseFile(filePath: string, autoImportNames: string[]): ParsedFile {
 
   try {
     const content = readFileSync(filePath, 'utf8')
-    if (filePath.endsWith('.vue')) {
+    const normalizedPath = normalizePath(filePath)
+    if (normalizedPath.endsWith('.vue')) {
       return parseVue(filePath, content, autoImportNames)
     }
 
@@ -276,6 +277,10 @@ function stripJsCommentsAndStrings(content: string): string {
         escaped = true
       } else if (char === quote) {
         quote = null
+      }
+      if (quote && char === '`' && next === '$') {
+        stripped += char
+        continue
       }
       stripped += char === '\n' ? '\n' : ' '
       continue
