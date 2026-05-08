@@ -62509,9 +62509,9 @@ function stripJsCommentsAndStrings(content) {
         escaped = true;
       } else if (char === quote) {
         quote = null;
-      }
-      if (quote === "`" && char === "`" && next === "$") {
-        stripped += char;
+      } else if (quote === "`" && char === "$" && next === "{") {
+        stripped += char + next;
+        i++;
         continue;
       }
       stripped += char === "\n" ? "\n" : " ";

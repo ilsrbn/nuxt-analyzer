@@ -350,10 +350,10 @@ func TestResolveToNodeID(t *testing.T) {
 		},
 	}
 
-	if got, ok := resolveToNodeID(nodes, "components/Button"); !ok || got != NodeID("components/Button.vue") {
+	if got, ok := resolveToNodeID(nodes, "components/Button", ""); !ok || got != NodeID("components/Button.vue") {
 		t.Fatalf("resolveToNodeID() = (%q, %v), want (%q, true)", got, ok, NodeID("components/Button.vue"))
 	}
-	if _, ok := resolveToNodeID(nodes, "components/Missing"); ok {
+	if _, ok := resolveToNodeID(nodes, "components/Missing", ""); ok {
 		t.Fatal("resolveToNodeID() unexpectedly matched missing node")
 	}
 }
