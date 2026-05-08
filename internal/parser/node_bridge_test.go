@@ -11,7 +11,7 @@ func TestBridgeParseReturnsResults(t *testing.T) {
 	b := &Bridge{
 		parserPath: "parser.bundle.js",
 		runCmd: func(name string, args []string, input []byte) ([]byte, error) {
-			return []byte(`{"results":[{"path":"/a.vue","type":"component","imports":["./foo"],"templateRefs":["MyComp"],"dynamicComponents":["resolveComponent(name)"],"error":null}]}`), nil
+			return []byte(`{"results":[{"path":"/a.vue","type":"component","imports":["./foo"],"templateRefs":["MyComp"],"dynamicComponents":["resolveComponent(name)"],"usedAutoImports":["useAuth"],"providedInjections":["api","*"],"usedInjections":["api"],"error":null}]}`), nil
 		},
 	}
 
@@ -40,6 +40,12 @@ func TestBridgeParseReturnsResults(t *testing.T) {
 	if !reflect.DeepEqual(got.DynamicComponents, []string{"resolveComponent(name)"}) {
 		t.Fatalf("DynamicComponents = %#v, want %#v", got.DynamicComponents, []string{"resolveComponent(name)"})
 	}
+	if !reflect.DeepEqual(got.ProvidedInjections, []string{"api", "*"}) {
+		t.Fatalf("ProvidedInjections = %#v, want %#v", got.ProvidedInjections, []string{"api", "*"})
+	}
+	if !reflect.DeepEqual(got.UsedInjections, []string{"api"}) {
+		t.Fatalf("UsedInjections = %#v, want %#v", got.UsedInjections, []string{"api"})
+	}
 	if got.Error != nil {
 		t.Fatalf("Error = %v, want nil", *got.Error)
 	}
@@ -62,7 +68,7 @@ func TestBridgeParseSendsCorrectInput(t *testing.T) {
 		},
 	}
 
-	if _, err := b.Parse([]string{"/a.vue", "/b.ts"}, nil); err != nil {
+	if _, err := b.Parse([]string{"/a.vue", "/b.vue"}, nil); err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
 
@@ -79,8 +85,8 @@ func TestBridgeParseSendsCorrectInput(t *testing.T) {
 	if err := json.Unmarshal(received, &payload); err != nil {
 		t.Fatalf("json.Unmarshal(input) error = %v", err)
 	}
-	if !reflect.DeepEqual(payload.Files, []string{"/a.vue", "/b.ts"}) {
-		t.Fatalf("payload.Files = %#v, want %#v", payload.Files, []string{"/a.vue", "/b.ts"})
+	if !reflect.DeepEqual(payload.Files, []string{"/a.vue", "/b.vue"}) {
+		t.Fatalf("payload.Files = %#v, want %#v", payload.Files, []string{"/a.vue", "/b.vue"})
 	}
 }
 

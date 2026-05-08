@@ -24,6 +24,8 @@ interface ParsedFile {
   templateRefs: string[]
   dynamicComponents: string[]
   usedAutoImports: string[]
+  providedInjections: string[]
+  usedInjections: string[]
   error: string | null
 }
 
@@ -66,11 +68,12 @@ function parseFile(filePath: string, autoImportNames: string[]): ParsedFile {
 
   try {
     const content = readFileSync(filePath, 'utf8')
-    if (filePath.endsWith('.vue')) {
+    const normalizedPath = normalizePath(filePath)
+    if (normalizedPath.endsWith('.vue')) {
       return parseVue(filePath, content, autoImportNames)
     }
 
-    return parseTS(filePath, content, autoImportNames)
+    return empty(filePath, inferredType, `unsupported file extension for Vue parser: ${filePath}`)
   } catch (error) {
     return empty(filePath, inferredType, errorMessage(error))
   }
@@ -93,11 +96,12 @@ function parseVue(filePath: string, content: string, autoImportNames: string[]):
     const scriptContent = [descriptor.script?.content ?? '', descriptor.scriptSetup?.content ?? '']
       .filter((part) => part.length > 0)
       .join('\n')
+    const templateContent = descriptor.template?.content ?? ''
 
     extractImports(scriptContent, imports)
 
-    if (descriptor.template?.content) {
-      extractTemplateRefs(filePath, descriptor.template.content, templateRefs, dynamicComponents)
+    if (templateContent) {
+      extractTemplateRefs(filePath, templateContent, templateRefs, dynamicComponents)
     }
 
     return {
@@ -107,6 +111,11 @@ function parseVue(filePath: string, content: string, autoImportNames: string[]):
       templateRefs: dedupe(templateRefs),
       dynamicComponents: dedupe(dynamicComponents),
       usedAutoImports: extractAutoImportUsages(scriptContent, autoImportNames),
+      providedInjections: extractProvidedInjections(scriptContent),
+      usedInjections: dedupe([
+        ...extractInjectionUsages(scriptContent, { ignoreJsCommentsAndStrings: true }),
+        ...extractTemplateInjectionUsages(filePath, templateContent),
+      ]),
       error: null,
     }
   } catch (error) {
@@ -114,20 +123,25 @@ function parseVue(filePath: string, content: string, autoImportNames: string[]):
   }
 }
 
-function parseTS(filePath: string, content: string, autoImportNames: string[]): ParsedFile {
-  const imports: string[] = []
-  extractImports(content, imports)
-
-  return {
-    path: filePath,
-    type: inferType(filePath),
-    imports: dedupe(imports),
-    templateRefs: [],
-    dynamicComponents: [],
-    usedAutoImports: extractAutoImportUsages(content, autoImportNames),
-    error: null,
-  }
-}
+const dynamicInjectionProvider = '*'
+const ignoredInjectionUsageNames = new Set([
+  'event',
+  'attrs',
+  'slots',
+  'refs',
+  'props',
+  'emit',
+  'el',
+  'data',
+  'options',
+  'parent',
+  'root',
+  'nextTick',
+  'forceUpdate',
+  'route',
+  'router',
+  'config',
+])
 
 // extractAutoImportUsages returns the subset of autoImportNames that appear as
 // standalone identifiers in content (not as property accesses like `.name`).
@@ -144,6 +158,400 @@ function extractAutoImportUsages(content: string, autoImportNames: string[]): st
     }
   }
   return found
+}
+
+function extractProvidedInjections(content: string): string[] {
+  const found: string[] = []
+  const searchable = stripJsCommentsAndStrings(content)
+  const provideObjectRe = /\bprovide\s*:\s*\{/g
+  let match: RegExpExecArray | null
+
+  while ((match = provideObjectRe.exec(searchable)) !== null) {
+    const openBrace = searchable.indexOf('{', match.index)
+    const closeBrace = findMatchingBrace(searchable, openBrace)
+    if (closeBrace === -1) {
+      continue
+    }
+    collectProvideObjectKeys(content.slice(openBrace + 1, closeBrace), found)
+    provideObjectRe.lastIndex = closeBrace + 1
+  }
+
+  const provideCallRe = /(?<![\w$.])(?:(?:nuxtApp|app)|useNuxtApp\(\))\s*\.\s*provide\s*\(/g
+  while ((match = provideCallRe.exec(searchable)) !== null) {
+    if (!isRootLikeProviderMatch(searchable, match.index)) {
+      continue
+    }
+
+    const openParen = match.index + match[0].length - 1
+    const closeParen = findMatchingParen(searchable, openParen)
+    if (closeParen === -1) {
+      found.push(dynamicInjectionProvider)
+      continue
+    }
+
+    const args = splitTopLevel(stripJsComments(content.slice(openParen + 1, closeParen)), ',')
+    const firstArg = args[0]?.trim()
+    const staticName = firstArg ? staticStringLiteralContent(firstArg) : undefined
+    found.push(staticName === undefined ? dynamicInjectionProvider : normalizeInjectionName(staticName))
+    provideCallRe.lastIndex = closeParen + 1
+  }
+
+  return dedupe(found)
+}
+
+function isRootLikeProviderMatch(content: string, index: number): boolean {
+  for (let i = index - 1; i >= 0; i--) {
+    if (/\s/.test(content[i])) {
+      continue
+    }
+
+    return content[i] !== '.' && !/[\w$]/.test(content[i])
+  }
+
+  return true
+}
+
+function extractInjectionUsages(
+  content: string,
+  options: { ignoreJsCommentsAndStrings?: boolean } = {}
+): string[] {
+  const found: string[] = []
+  const searchable = options.ignoreJsCommentsAndStrings ? stripJsCommentsAndStrings(content) : content
+  const injectionRe = /(?<![\w$])\$([A-Za-z_][\w$]*)\b/g
+  let match: RegExpExecArray | null
+
+  while ((match = injectionRe.exec(searchable)) !== null) {
+    if (isQuotedObjectKeyMatch(searchable, match.index, match[0].length)) {
+      continue
+    }
+    const name = normalizeInjectionName(match[0])
+    if (ignoredInjectionUsageNames.has(name)) {
+      continue
+    }
+    found.push(name)
+  }
+
+  return dedupe(found)
+}
+
+function stripHtmlComments(content: string): string {
+  return content.replace(/<!--[\s\S]*?-->/g, (comment) => comment.replace(/[^\n]/g, ' '))
+}
+
+function extractTemplateInjectionUsages(filePath: string, templateContent: string): string[] {
+  if (!templateContent) {
+    return []
+  }
+
+  try {
+    const compiled = compileTemplate({
+      source: templateContent,
+      filename: filePath,
+      id: filePath,
+    })
+
+    const firstError = compiled.errors[0]
+    if (firstError) {
+      throw firstError
+    }
+
+    return extractInjectionUsages(compiled.code, { ignoreJsCommentsAndStrings: true })
+  } catch {
+    return extractInjectionUsages(stripHtmlComments(templateContent))
+  }
+}
+
+function stripJsCommentsAndStrings(content: string): string {
+  let stripped = ''
+  let quote: string | null = null
+  let escaped = false
+
+  for (let i = 0; i < content.length; i++) {
+    const char = content[i]
+    const next = content[i + 1]
+
+    if (quote) {
+      if (escaped) {
+        escaped = false
+      } else if (char === '\\') {
+        escaped = true
+      } else if (char === quote) {
+        quote = null
+      }
+      if (quote && char === '`' && next === '$') {
+        stripped += char
+        continue
+      }
+      stripped += char === '\n' ? '\n' : ' '
+      continue
+    }
+
+    if (char === '/' && next === '/') {
+      stripped += '  '
+      i += 2
+      while (i < content.length && content[i] !== '\n') {
+        stripped += ' '
+        i++
+      }
+      if (i < content.length) {
+        stripped += '\n'
+      }
+      continue
+    }
+
+    if (char === '/' && next === '*') {
+      stripped += '  '
+      i += 2
+      while (i < content.length && !(content[i] === '*' && content[i + 1] === '/')) {
+        stripped += content[i] === '\n' ? '\n' : ' '
+        i++
+      }
+      if (i < content.length) {
+        stripped += '  '
+        i++
+      }
+      continue
+    }
+
+    if (char === '"' || char === "'" || char === '`') {
+      quote = char
+      stripped += ' '
+      continue
+    }
+
+    stripped += char
+  }
+
+  return stripped
+}
+
+function stripJsComments(content: string): string {
+  let stripped = ''
+  let quote: string | null = null
+  let escaped = false
+
+  for (let i = 0; i < content.length; i++) {
+    const char = content[i]
+    const next = content[i + 1]
+
+    if (quote) {
+      if (escaped) {
+        escaped = false
+      } else if (char === '\\') {
+        escaped = true
+      } else if (char === quote) {
+        quote = null
+      }
+      stripped += char
+      continue
+    }
+
+    if (char === '/' && next === '/') {
+      stripped += '  '
+      i += 2
+      while (i < content.length && content[i] !== '\n') {
+        stripped += ' '
+        i++
+      }
+      if (i < content.length) {
+        stripped += '\n'
+      }
+      continue
+    }
+
+    if (char === '/' && next === '*') {
+      stripped += '  '
+      i += 2
+      while (i < content.length && !(content[i] === '*' && content[i + 1] === '/')) {
+        stripped += content[i] === '\n' ? '\n' : ' '
+        i++
+      }
+      if (i < content.length) {
+        stripped += '  '
+        i++
+      }
+      continue
+    }
+
+    if (char === '"' || char === "'" || char === '`') {
+      quote = char
+    }
+
+    stripped += char
+  }
+
+  return stripped
+}
+
+function isQuotedObjectKeyMatch(content: string, index: number, length: number): boolean {
+  const before = content[index - 1]
+  const after = content[index + length]
+  if ((before !== '"' && before !== "'") || after !== before) {
+    return false
+  }
+
+  return content.slice(index + length + 1).trimStart().startsWith(':')
+}
+
+function normalizeInjectionName(name: string): string {
+  return name.trim().replace(/^\$+/, '')
+}
+
+function collectProvideObjectKeys(body: string, out: string[]): void {
+  for (const property of splitTopLevel(stripJsComments(body), ',')) {
+    const trimmed = property.trim()
+    if (trimmed.length === 0 || trimmed.startsWith('[')) {
+      continue
+    }
+
+    const colonIndex = topLevelIndexOf(property, ':')
+    const rawKey = colonIndex === -1 ? staticMethodOrShorthandKey(trimmed) : property.slice(0, colonIndex).trim()
+
+    if (rawKey === undefined || rawKey.startsWith('[')) {
+      continue
+    }
+
+    const staticKey = staticStringLiteralContent(rawKey) ?? rawKey.match(/^[$A-Za-z_][\w$]*$/)?.[0]
+    if (staticKey !== undefined) {
+      out.push(normalizeInjectionName(staticKey))
+    }
+  }
+}
+
+function staticMethodOrShorthandKey(property: string): string | undefined {
+  const shorthand = property.match(/^[$A-Za-z_][\w$]*$/)?.[0]
+  if (shorthand) {
+    return shorthand
+  }
+
+  const method = property.match(/^((?:[$A-Za-z_][\w$]*)|(?:(['"`])[\s\S]*?\2))\s*\(/)?.[1]
+  if (method) {
+    return method
+  }
+
+  return undefined
+}
+
+function findMatchingBrace(content: string, openIndex: number): number {
+  return findMatchingDelimiter(content, openIndex, '{', '}')
+}
+
+function findMatchingParen(content: string, openIndex: number): number {
+  return findMatchingDelimiter(content, openIndex, '(', ')')
+}
+
+function findMatchingDelimiter(content: string, openIndex: number, open: string, close: string): number {
+  if (openIndex < 0 || content[openIndex] !== open) {
+    return -1
+  }
+
+  let depth = 0
+  let quote: string | null = null
+  let escaped = false
+
+  for (let i = openIndex; i < content.length; i++) {
+    const char = content[i]
+    const next = content[i + 1]
+
+    if (quote) {
+      if (escaped) {
+        escaped = false
+      } else if (char === '\\') {
+        escaped = true
+      } else if (char === quote) {
+        quote = null
+      }
+      continue
+    }
+
+    if (char === '/' && next === '/') {
+      const newline = content.indexOf('\n', i + 2)
+      i = newline === -1 ? content.length : newline
+      continue
+    }
+    if (char === '/' && next === '*') {
+      const commentEnd = content.indexOf('*/', i + 2)
+      i = commentEnd === -1 ? content.length : commentEnd + 1
+      continue
+    }
+    if (char === '"' || char === "'" || char === '`') {
+      quote = char
+      continue
+    }
+    if (char === open) {
+      depth++
+      continue
+    }
+    if (char === close) {
+      depth--
+      if (depth === 0) {
+        return i
+      }
+    }
+  }
+
+  return -1
+}
+
+function splitTopLevel(content: string, delimiter: string): string[] {
+  const parts: string[] = []
+  let start = 0
+  let parenDepth = 0
+  let braceDepth = 0
+  let bracketDepth = 0
+  let quote: string | null = null
+  let escaped = false
+
+  for (let i = 0; i < content.length; i++) {
+    const char = content[i]
+
+    if (quote) {
+      if (escaped) {
+        escaped = false
+      } else if (char === '\\') {
+        escaped = true
+      } else if (char === quote) {
+        quote = null
+      }
+      continue
+    }
+
+    if (char === '"' || char === "'" || char === '`') {
+      quote = char
+      continue
+    }
+    if (char === '(') parenDepth++
+    if (char === ')') parenDepth--
+    if (char === '{') braceDepth++
+    if (char === '}') braceDepth--
+    if (char === '[') bracketDepth++
+    if (char === ']') bracketDepth--
+
+    if (char === delimiter && parenDepth === 0 && braceDepth === 0 && bracketDepth === 0) {
+      parts.push(content.slice(start, i))
+      start = i + 1
+    }
+  }
+
+  parts.push(content.slice(start))
+  return parts
+}
+
+function topLevelIndexOf(content: string, needle: string): number {
+  const beforeNeedle = splitTopLevel(content, needle)[0]
+  return beforeNeedle.length === content.length ? -1 : beforeNeedle.length
+}
+
+function staticStringLiteralContent(value: string): string | undefined {
+  const trimmed = value.trim()
+  const match = trimmed.match(/^(['"`])([\s\S]*)\1$/)
+  if (!match) {
+    return undefined
+  }
+  if (match[1] === '`' && /\$\{/.test(match[2])) {
+    return undefined
+  }
+  return match[2]
 }
 
 function escapeRegExp(s: string): string {
@@ -338,6 +746,8 @@ function empty(filePath: string, type: ParsedType, error: string): ParsedFile {
     templateRefs: [],
     dynamicComponents: [],
     usedAutoImports: [],
+    providedInjections: [],
+    usedInjections: [],
     error,
   }
 }

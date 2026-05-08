@@ -28,11 +28,18 @@ jobs:
         with:
           node-version: 22
 
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          distribution: goreleaser
-          version: latest
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build parser bundle
+        run: |
+          npm --prefix node install
+          npm --prefix node run build
+          mkdir -p assets
+          cp node/dist/parser.bundle.js assets/parser.bundle.js
+
+      - name: Run GoReleaser Cross
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/go/src/github.com/ilsrbn/nuxt-analyzer" \
+            -w /go/src/github.com/ilsrbn/nuxt-analyzer \
+            -e GITHUB_TOKEN="${{ secrets.GITHUB_TOKEN }}" \
+            ghcr.io/goreleaser/goreleaser-cross:latest \
+            release --clean
