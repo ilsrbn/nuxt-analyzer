@@ -23,15 +23,15 @@ func Scan(projectRoot string, includeTests bool) ([]FileInfo, error) {
 
 	files := make([]FileInfo, 0)
 	err = filepath.WalkDir(absRoot, func(path string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			if d == nil || d.IsDir() {
-				if os.IsPermission(walkErr) || os.IsNotExist(walkErr) {
-					return filepath.SkipDir
-				}
-				return nil
+	if walkErr != nil {
+		if d == nil || d.IsDir() {
+			if os.IsPermission(walkErr) || os.IsNotExist(walkErr) {
+				return filepath.SkipDir
 			}
 			return walkErr
 		}
+		return walkErr
+	}
 
 		if d.IsDir() {
 			if shouldSkipDir(d.Name()) {
