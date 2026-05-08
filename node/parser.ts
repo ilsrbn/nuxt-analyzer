@@ -149,11 +149,11 @@ function extractAutoImportUsages(content: string, autoImportNames: string[]): st
   if (autoImportNames.length === 0) {
     return []
   }
+  const searchable = stripJsCommentsAndStrings(content)
   const found: string[] = []
   for (const name of autoImportNames) {
-    // Negative lookbehind for dot or word char prevents matching `foo.useFoo` or `notUseFoo`.
     const re = new RegExp(`(?<![.\\w])${escapeRegExp(name)}(?![\\w])`)
-    if (re.test(content)) {
+    if (re.test(searchable)) {
       found.push(name)
     }
   }
@@ -559,11 +559,12 @@ function escapeRegExp(s: string): string {
 }
 
 function extractImports(content: string, out: string[]): void {
+  const searchable = stripJsCommentsAndStrings(content)
   const staticImportRe = /(?:^|[^\w$])import\s+(?:type\s+)?(?:[^'";\n]+?\s+from\s+)?['"]([^'"]+)['"]/gm
   const dynamicImportRe = /import\s*\(\s*['"]([^'"]+)['"]\s*\)/g
 
-  collectMatches(staticImportRe, content, out)
-  collectMatches(dynamicImportRe, content, out)
+  collectMatches(staticImportRe, searchable, out)
+  collectMatches(dynamicImportRe, searchable, out)
 }
 
 function collectMatches(pattern: RegExp, content: string, out: string[]): void {

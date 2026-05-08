@@ -88,14 +88,13 @@ func NodeID(repoRelPath string) string {
 
 func InferType(relPath string) NodeType {
 	path := normalizeRelPath(relPath)
-	base := filepath.Base(path)
 
-	if base == "app.vue" {
-		return NodeTypeComponent
-	}
-
-	for _, segment := range strings.Split(path, "/") {
-		switch segment {
+	pathSegments := strings.Split(path, "/")
+	for i := len(pathSegments) - 1; i >= 0; i-- {
+		if pathSegments[i] == "app.vue" && i == len(pathSegments)-1 {
+			return NodeTypeComponent
+		}
+		switch pathSegments[i] {
 		case "components":
 			return NodeTypeComponent
 		case "pages":
@@ -162,6 +161,13 @@ func (g *Graph) AddEdge(e Edge) {
 	}
 	if g.ReverseDeps == nil {
 		g.ReverseDeps = make(map[string][]string)
+	}
+
+	key := e.From + ":" + e.To + ":" + string(e.Kind)
+	for _, existing := range g.Edges {
+		if existing.From+":"+existing.To+":"+string(existing.Kind) == key {
+			return
+		}
 	}
 
 	g.Edges = append(g.Edges, e)

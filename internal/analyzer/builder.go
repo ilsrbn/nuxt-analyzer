@@ -31,7 +31,10 @@ func (b Builder) Build(files []FileInfo, bridge parseBridge) (*Graph, []BuildErr
 	}
 
 	// Load Nuxt auto-import map from .nuxt/imports.d.ts; best-effort, ignored on error.
-	autoImportMap, _ := nuxt.LoadAutoImportMap(b.ProjectRoot)
+	autoImportMap, err := nuxt.LoadAutoImportMap(b.ProjectRoot)
+	if err != nil {
+		return nil, nil, fmt.Errorf("load auto-import map: %w", err)
+	}
 	autoImportNames := make([]string, 0, len(autoImportMap))
 	for name := range autoImportMap {
 		autoImportNames = append(autoImportNames, name)
@@ -230,10 +233,9 @@ func resolveToNodeID(nodes map[string]*Node, relPath string) (string, bool) {
 
 func relPathToRoute(relPath string) string {
 	route := filepath.ToSlash(relPath)
-	// Strip everything up to and including the "pages/" directory so that both
-	// "pages/foo.vue" and "app/pages/foo.vue" (Nuxt srcDir layout) produce "/foo".
-	if idx := strings.Index(route, "pages/"); idx >= 0 {
-		route = route[idx+len("pages/"):]
+	lastPagesIdx := strings.LastIndex(route, "pages/")
+	if lastPagesIdx >= 0 {
+		route = route[lastPagesIdx+len("pages/"):]
 	}
 	route = strings.TrimSuffix(route, filepath.Ext(route))
 	if route == "index" {
