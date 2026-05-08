@@ -62336,7 +62336,8 @@ function parseFile(filePath, autoImportNames) {
   const inferredType = inferType(filePath);
   try {
     const content = (0, import_node_fs.readFileSync)(filePath, "utf8");
-    if (filePath.endsWith(".vue")) {
+    const normalizedPath = normalizePath(filePath);
+    if (normalizedPath.endsWith(".vue")) {
       return parseVue(filePath, content, autoImportNames);
     }
     return empty(filePath, inferredType, `unsupported file extension for Vue parser: ${filePath}`);
@@ -62507,6 +62508,10 @@ function stripJsCommentsAndStrings(content) {
         escaped = true;
       } else if (char === quote) {
         quote = null;
+      }
+      if (quote && char === "`" && next === "$") {
+        stripped += char;
+        continue;
       }
       stripped += char === "\n" ? "\n" : " ";
       continue;
