@@ -10,6 +10,8 @@ builds:
   - id: impact-map
     main: ./cmd/impact-map
     binary: impact-map
+    ldflags:
+      - -s -w -X main.version={{.Version}}
     env:
       - CGO_ENABLED=1
     goos:

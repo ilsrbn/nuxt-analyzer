@@ -17,16 +17,33 @@ import (
 	"github.com/ilsrbn/nuxt-analyzer/internal/reporter"
 )
 
+var version = "dev"
+
 func main() {
+	root := newRootCommand()
+	if err := root.Execute(); err != nil {
+		os.Exit(1)
+	}
+}
+
+func newRootCommand() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "impact-map",
 		Short: "Nuxt release impact analyzer",
 	}
+	root.PersistentFlags().Bool("no-color", false, "disable colored output")
 
 	analyze := &cobra.Command{
-		Use:          "analyze",
-		Short:        "Analyze blast radius of git changes",
-		RunE:         runAnalyze,
+		Use:   "analyze",
+		Short: "Analyze blast radius of git changes",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			updateCheck := startBackgroundUpdateCheck(cmd.Context(), updateCheckConfig{
+				Stderr: cmd.ErrOrStderr(),
+			})
+			err := runAnalyze(cmd, args)
+			updateCheck.PrintNotice()
+			return err
+		},
 		SilenceUsage: true,
 	}
 
@@ -40,10 +57,22 @@ func main() {
 	analyze.Flags().Bool("changed-files-only", false, "output only changed nodes")
 
 	root.AddCommand(analyze)
+	root.AddCommand(&cobra.Command{
+		Use:   "version",
+		Short: "Print version",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			_, err := fmt.Fprintf(cmd.OutOrStdout(), "impact-map %s\n", version)
+			return err
+		},
+	})
+	root.AddCommand(&cobra.Command{
+		Use:          "upgrade",
+		Short:        "Upgrade impact-map to the latest release",
+		RunE:         runUpgrade,
+		SilenceUsage: true,
+	})
 
-	if err := root.Execute(); err != nil {
-		os.Exit(1)
-	}
+	return root
 }
 
 func runAnalyze(cmd *cobra.Command, args []string) error {
