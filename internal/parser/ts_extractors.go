@@ -43,21 +43,17 @@ var ignoredInjectionUsageNames = map[string]struct{}{
 func extractTSInjectionUsages(root *tree_sitter.Node, source []byte) []string {
 	found := []string{}
 	walkTS(root, func(node *tree_sitter.Node) {
-		if node.Kind() != "identifier" {
+		name, ok := injectionUsageName(node, source)
+		if !ok {
 			return
 		}
-		name := node.Utf8Text(source)
-		if len(name) < 2 || name[0] != '$' {
-			return
-		}
-		normalized := strings.TrimLeft(name, "$")
-		if _, ignored := ignoredInjectionUsageNames[normalized]; ignored {
+		if _, ignored := ignoredInjectionUsageNames[name]; ignored {
 			return
 		}
 		if isObjectPropertyKey(node) {
 			return
 		}
-		found = append(found, normalized)
+		found = append(found, name)
 	})
 	return dedupeStrings(found)
 }
@@ -84,6 +80,20 @@ func extractTSProvidedInjections(root *tree_sitter.Node, source []byte) []string
 			return
 		}
 		found = append(found, strings.TrimLeft(value, "$"))
+	})
+	walkTS(root, func(node *tree_sitter.Node) {
+		if node.Kind() != "pair" {
+			return
+		}
+		key := node.ChildByFieldName("key")
+		if staticPropertyName(key, source) != "provide" {
+			return
+		}
+		value := node.ChildByFieldName("value")
+		if value == nil || value.Kind() != "object" {
+			return
+		}
+		found = append(found, collectStaticObjectKeys(value, source)...)
 	})
 	return dedupeStrings(found)
 }
@@ -151,7 +161,11 @@ func isObjectPropertyKey(node *tree_sitter.Node) bool {
 		return false
 	}
 	key := parent.ChildByFieldName("key")
-	return parent.Kind() == "pair" && sameTSNode(key, node)
+	if parent.Kind() != "pair" || !sameTSNode(key, node) {
+		return false
+	}
+	grandparent := parent.Parent()
+	return grandparent == nil || grandparent.Kind() != "object_pattern"
 }
 
 func isProvideFunction(node *tree_sitter.Node, source []byte) bool {
@@ -174,6 +188,58 @@ func firstStringFragment(node *tree_sitter.Node, source []byte) string {
 		}
 	}
 	return ""
+}
+
+func injectionUsageName(node *tree_sitter.Node, source []byte) (string, bool) {
+	switch node.Kind() {
+	case "identifier", "property_identifier", "shorthand_property_identifier", "shorthand_property_identifier_pattern":
+	default:
+		return "", false
+	}
+	name := node.Utf8Text(source)
+	if len(name) < 2 || name[0] != '$' {
+		return "", false
+	}
+	return strings.TrimLeft(name, "$"), true
+}
+
+func collectStaticObjectKeys(object *tree_sitter.Node, source []byte) []string {
+	keys := []string{}
+	for i := uint(0); i < object.NamedChildCount(); i++ {
+		child := object.NamedChild(i)
+		switch child.Kind() {
+		case "pair":
+			key := staticPropertyName(child.ChildByFieldName("key"), source)
+			if key != "" {
+				keys = append(keys, strings.TrimLeft(key, "$"))
+			}
+		case "method_definition":
+			key := staticPropertyName(child.ChildByFieldName("name"), source)
+			if key != "" {
+				keys = append(keys, strings.TrimLeft(key, "$"))
+			}
+		case "shorthand_property_identifier":
+			key := child.Utf8Text(source)
+			if key != "" {
+				keys = append(keys, strings.TrimLeft(key, "$"))
+			}
+		}
+	}
+	return keys
+}
+
+func staticPropertyName(node *tree_sitter.Node, source []byte) string {
+	if node == nil {
+		return ""
+	}
+	switch node.Kind() {
+	case "property_identifier", "identifier", "shorthand_property_identifier":
+		return node.Utf8Text(source)
+	case "string":
+		return firstStringFragment(node, source)
+	default:
+		return ""
+	}
 }
 
 func sameTSNode(a *tree_sitter.Node, b *tree_sitter.Node) bool {

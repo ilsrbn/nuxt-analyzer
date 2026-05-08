@@ -3,6 +3,7 @@ package parser
 import (
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type HybridBridge struct {
@@ -38,7 +39,7 @@ func (h *HybridBridge) Parse(files []string, autoImportNames []string) ([]Parsed
 	vueFiles := []string{}
 	tsFiles := []string{}
 	for _, file := range files {
-		switch filepath.Ext(file) {
+		switch strings.ToLower(filepath.Ext(file)) {
 		case ".vue":
 			vueFiles = append(vueFiles, file)
 		case ".ts":

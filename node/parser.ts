@@ -96,7 +96,6 @@ function parseVue(filePath: string, content: string, autoImportNames: string[]):
       .filter((part) => part.length > 0)
       .join('\n')
     const templateContent = descriptor.template?.content ?? ''
-    const fullContent = [scriptContent, templateContent].filter((part) => part.length > 0).join('\n')
 
     extractImports(scriptContent, imports)
 
@@ -114,7 +113,7 @@ function parseVue(filePath: string, content: string, autoImportNames: string[]):
       providedInjections: extractProvidedInjections(scriptContent),
       usedInjections: dedupe([
         ...extractInjectionUsages(scriptContent, { ignoreJsCommentsAndStrings: true }),
-        ...extractInjectionUsages(stripHtmlComments(templateContent)),
+        ...extractTemplateInjectionUsages(filePath, templateContent),
       ]),
       error: null,
     }
@@ -236,6 +235,29 @@ function extractInjectionUsages(
 
 function stripHtmlComments(content: string): string {
   return content.replace(/<!--[\s\S]*?-->/g, (comment) => comment.replace(/[^\n]/g, ' '))
+}
+
+function extractTemplateInjectionUsages(filePath: string, templateContent: string): string[] {
+  if (!templateContent) {
+    return []
+  }
+
+  try {
+    const compiled = compileTemplate({
+      source: templateContent,
+      filename: filePath,
+      id: filePath,
+    })
+
+    const firstError = compiled.errors[0]
+    if (firstError) {
+      throw firstError
+    }
+
+    return extractInjectionUsages(compiled.code, { ignoreJsCommentsAndStrings: true })
+  } catch {
+    return extractInjectionUsages(stripHtmlComments(templateContent))
+  }
 }
 
 function stripJsCommentsAndStrings(content: string): string {

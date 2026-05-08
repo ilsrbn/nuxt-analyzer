@@ -58,14 +58,18 @@ const notUseAuth = true
 func TestTypeScriptParserExtractsInjectionUsage(t *testing.T) {
 	source := []byte(`
 const data = $api('/users')
+const viaApp = useNuxtApp().$client('/users')
+const { $tracker } = useNuxtApp()
+const { $analytics: analytics } = useNuxtApp()
 const ignored = $route.params.id
 const alsoIgnored = { "$api": true }
+const alsoIgnoredPair = { $client: true }
 `)
 
 	p := NewTypeScriptParser()
 	got := p.ParseSource("/project/composables/useUsers.ts", source, nil)
 
-	want := []string{"api"}
+	want := []string{"api", "client", "tracker", "analytics"}
 	if !equalStringSlices(got.UsedInjections, want) {
 		t.Fatalf("UsedInjections = %#v, want %#v", got.UsedInjections, want)
 	}
@@ -83,6 +87,29 @@ export default defineNuxtPlugin((nuxtApp) => {
 	got := p.ParseSource("/project/plugins/api.ts", source, nil)
 
 	want := []string{"api", DynamicInjectionProvider}
+	if !equalStringSlices(got.ProvidedInjections, want) {
+		t.Fatalf("ProvidedInjections = %#v, want %#v", got.ProvidedInjections, want)
+	}
+}
+
+func TestTypeScriptParserExtractsReturnedProvideObject(t *testing.T) {
+	source := []byte(`
+export default defineNuxtPlugin(() => {
+  return {
+    provide: {
+      api: {},
+      $client: {},
+      "tracker": {},
+      [dynamicName]: {},
+    }
+  }
+})
+`)
+
+	p := NewTypeScriptParser()
+	got := p.ParseSource("/project/plugins/api.ts", source, nil)
+
+	want := []string{"api", "client", "tracker"}
 	if !equalStringSlices(got.ProvidedInjections, want) {
 		t.Fatalf("ProvidedInjections = %#v, want %#v", got.ProvidedInjections, want)
 	}
