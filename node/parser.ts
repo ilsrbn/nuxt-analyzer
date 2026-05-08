@@ -149,11 +149,11 @@ function extractAutoImportUsages(content: string, autoImportNames: string[]): st
   if (autoImportNames.length === 0) {
     return []
   }
+  const searchable = stripJsCommentsAndStrings(content)
   const found: string[] = []
   for (const name of autoImportNames) {
-    // Negative lookbehind for dot or word char prevents matching `foo.useFoo` or `notUseFoo`.
     const re = new RegExp(`(?<![.\\w])${escapeRegExp(name)}(?![\\w])`)
-    if (re.test(content)) {
+    if (re.test(searchable)) {
       found.push(name)
     }
   }
@@ -277,9 +277,9 @@ function stripJsCommentsAndStrings(content: string): string {
         escaped = true
       } else if (char === quote) {
         quote = null
-      }
-      if (quote && char === '`' && next === '$') {
-        stripped += char
+      } else if (quote === '`' && char === '$' && next === '{') {
+        stripped += char + next
+        i++
         continue
       }
       stripped += char === '\n' ? '\n' : ' '
@@ -341,6 +341,10 @@ function stripJsComments(content: string): string {
         escaped = true
       } else if (char === quote) {
         quote = null
+      }
+      if (quote === '`' && char === '`' && next === '$') {
+        stripped += char
+        continue
       }
       stripped += char
       continue

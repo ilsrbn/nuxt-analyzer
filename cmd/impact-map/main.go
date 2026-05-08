@@ -123,10 +123,9 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("resolve project root: %w", err)
 	}
 
-	useCache := !noCache
 	cacheKey := cache.CacheKey(base, head)
 	reportCache := cache.NoopCache{}
-	if useCache {
+	if !noCache {
 		if cached, ok := reportCache.Get(cacheKey); ok {
 			if !json.Valid(cached) {
 				return fmt.Errorf("cached report: invalid JSON")
@@ -198,7 +197,7 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("marshal report: %w", err)
 	}
 
-	if useCache {
+	if !noCache {
 		if err := reportCache.Set(cacheKey, data); err != nil {
 			return fmt.Errorf("cache report: %w", err)
 		}

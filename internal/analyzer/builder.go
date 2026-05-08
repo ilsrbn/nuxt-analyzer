@@ -31,7 +31,10 @@ func (b Builder) Build(files []FileInfo, bridge parseBridge) (*Graph, []BuildErr
 	}
 
 	// Load Nuxt auto-import map from .nuxt/imports.d.ts; best-effort, ignored on error.
-	autoImportMap, _ := nuxt.LoadAutoImportMap(b.ProjectRoot)
+	autoImportMap, err := nuxt.LoadAutoImportMap(b.ProjectRoot)
+	if err != nil {
+		autoImportMap = make(map[string]string)
+	}
 	autoImportNames := make([]string, 0, len(autoImportMap))
 	for name := range autoImportMap {
 		autoImportNames = append(autoImportNames, name)
@@ -95,7 +98,8 @@ func (b Builder) buildFromParsed(files []FileInfo, parsed []parser.ParsedFile, a
 			if !ok {
 				continue
 			}
-			toID, ok := resolveToNodeID(graph.Nodes, resolvedRel)
+			originalExt := filepath.Ext(imp)
+			toID, ok := resolveToNodeID(graph.Nodes, resolvedRel, originalExt)
 			if !ok {
 				continue
 			}
@@ -132,7 +136,7 @@ func (b Builder) buildFromParsed(files []FileInfo, parsed []parser.ParsedFile, a
 			if !ok {
 				continue
 			}
-			toID, ok := resolveToNodeID(graph.Nodes, relPath)
+			toID, ok := resolveToNodeID(graph.Nodes, relPath, "")
 			if !ok {
 				continue
 			}
@@ -209,14 +213,30 @@ func (b Builder) buildFromParsed(files []FileInfo, parsed []parser.ParsedFile, a
 	return graph, buildErrs, nil
 }
 
-func resolveToNodeID(nodes map[string]*Node, relPath string) (string, bool) {
-	candidates := []string{
-		relPath + ".vue",
-		relPath + ".ts",
-		relPath,
-		relPath + "/index.vue",
-		relPath + "/index.ts",
+func resolveToNodeID(nodes map[string]*Node, relPath string, originalExt string) (string, bool) {
+	candidates := []string{}
+
+	if originalExt != "" {
+		candidates = append(candidates, relPath+originalExt)
 	}
+
+	candidates = append(candidates,
+		relPath+".vue",
+		relPath+".ts",
+		relPath,
+		relPath+"/index.vue",
+		relPath+"/index.ts",
+		relPath+".js",
+		relPath+".mjs",
+		relPath+".cjs",
+		relPath+".tsx",
+		relPath+".jsx",
+		relPath+"/index.js",
+		relPath+"/index.mjs",
+		relPath+"/index.cjs",
+		relPath+"/index.tsx",
+		relPath+"/index.jsx",
+	)
 
 	for _, candidate := range candidates {
 		id := NodeID(candidate)
@@ -230,18 +250,27 @@ func resolveToNodeID(nodes map[string]*Node, relPath string) (string, bool) {
 
 func relPathToRoute(relPath string) string {
 	route := filepath.ToSlash(relPath)
-	// Strip everything up to and including the "pages/" directory so that both
-	// "pages/foo.vue" and "app/pages/foo.vue" (Nuxt srcDir layout) produce "/foo".
-	if idx := strings.Index(route, "pages/"); idx >= 0 {
-		route = route[idx+len("pages/"):]
+	parts := strings.Split(route, "/")
+
+	pagesIdx := -1
+	for i := 0; i < len(parts); i++ {
+		if parts[i] == "pages" {
+			pagesIdx = i
+			break
+		}
 	}
+	if pagesIdx >= 0 {
+		parts = parts[pagesIdx+1:]
+	}
+	route = strings.Join(parts, "/")
+
 	route = strings.TrimSuffix(route, filepath.Ext(route))
 	if route == "index" {
 		return "/"
 	}
 	route = strings.TrimSuffix(route, "/index")
 
-	parts := strings.Split(route, "/")
+	parts = strings.Split(route, "/")
 	for i, part := range parts {
 		switch {
 		case strings.HasPrefix(part, "[[...") && strings.HasSuffix(part, "]]"):

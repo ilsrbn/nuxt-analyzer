@@ -62404,10 +62404,11 @@ function extractAutoImportUsages(content, autoImportNames) {
   if (autoImportNames.length === 0) {
     return [];
   }
+  const searchable = stripJsCommentsAndStrings(content);
   const found = [];
   for (const name of autoImportNames) {
     const re = new RegExp(`(?<![.\\w])${escapeRegExp(name)}(?![\\w])`);
-    if (re.test(content)) {
+    if (re.test(searchable)) {
       found.push(name);
     }
   }
@@ -62508,9 +62509,9 @@ function stripJsCommentsAndStrings(content) {
         escaped = true;
       } else if (char === quote) {
         quote = null;
-      }
-      if (quote && char === "`" && next === "$") {
-        stripped += char;
+      } else if (quote === "`" && char === "$" && next === "{") {
+        stripped += char + next;
+        i++;
         continue;
       }
       stripped += char === "\n" ? "\n" : " ";
@@ -62564,6 +62565,10 @@ function stripJsComments(content) {
         escaped = true;
       } else if (char === quote) {
         quote = null;
+      }
+      if (quote === "`" && char === "`" && next === "$") {
+        stripped += char;
+        continue;
       }
       stripped += char;
       continue;

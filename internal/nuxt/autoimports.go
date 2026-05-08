@@ -8,6 +8,8 @@ import (
 	"strings"
 )
 
+var autoImportLineRe = regexp.MustCompile(`export\s*\{([^}]+)\}\s*from\s*["'](\.\./[^"']+)["']`)
+
 // LoadAutoImportMap reads .nuxt/imports.d.ts and returns a map of
 // exported name → project-relative path (without extension).
 // Returns an empty map (no error) when .nuxt/imports.d.ts does not exist.
@@ -23,14 +25,10 @@ func LoadAutoImportMap(projectRoot string) (map[string]string, error) {
 	}
 	defer f.Close()
 
-	// Each line is: export { Name, ... } from 'path'
-	// We only want project-local paths (start with "../", exclude "../node_modules/").
-	lineRe := regexp.MustCompile(`export\s*\{([^}]+)\}\s*from\s*["'](\.\./[^"']+)["']`)
-
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024) // lines can be very long
 	for scanner.Scan() {
-		m := lineRe.FindStringSubmatch(scanner.Text())
+		m := autoImportLineRe.FindStringSubmatch(scanner.Text())
 		if m == nil {
 			continue
 		}

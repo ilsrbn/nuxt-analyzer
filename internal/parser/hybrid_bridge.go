@@ -10,18 +10,22 @@ type HybridBridge struct {
 	node     *Bridge
 	ts       *TypeScriptParser
 	readFile func(string) ([]byte, error)
+	CleanupFn func()
 }
 
 func NewHybrid() (*HybridBridge, error) {
-	node, err := newNodeBridge()
+	node, cleanup, err := newNodeBridge()
 	if err != nil {
+		cleanup()
 		return nil, err
 	}
-	return &HybridBridge{
+	h := &HybridBridge{
 		node:     node,
 		ts:       NewTypeScriptParser(),
 		readFile: os.ReadFile,
-	}, nil
+	}
+	h.CleanupFn = cleanup
+	return h, nil
 }
 
 // New returns the parser bridge used by the analyzer.
@@ -33,6 +37,9 @@ func (h *HybridBridge) Cleanup() {
 	if h != nil && h.node != nil {
 		h.node.Cleanup()
 	}
+	if h != nil && h.CleanupFn != nil {
+		h.CleanupFn()
+	}
 }
 
 func (h *HybridBridge) Parse(files []string, autoImportNames []string) ([]ParsedFile, error) {
@@ -42,7 +49,7 @@ func (h *HybridBridge) Parse(files []string, autoImportNames []string) ([]Parsed
 		switch strings.ToLower(filepath.Ext(file)) {
 		case ".vue":
 			vueFiles = append(vueFiles, file)
-		case ".ts":
+		case ".ts", ".tsx", ".jsx", ".js", ".mjs", ".cjs":
 			tsFiles = append(tsFiles, file)
 		}
 	}
