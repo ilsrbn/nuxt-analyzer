@@ -278,7 +278,7 @@ function stripJsCommentsAndStrings(content: string): string {
       } else if (char === quote) {
         quote = null
       }
-      if (quote && char === '`' && next === '$') {
+      if (quote === '`' && char === '`' && next === '$') {
         stripped += char
         continue
       }
@@ -319,11 +319,6 @@ function stripJsCommentsAndStrings(content: string): string {
       continue
     }
 
-    if (quote && char === '`' && next === '$') {
-      stripped += char
-      continue
-    }
-
     stripped += char
   }
 
@@ -346,6 +341,10 @@ function stripJsComments(content: string): string {
         escaped = true
       } else if (char === quote) {
         quote = null
+      }
+      if (quote === '`' && char === '`' && next === '$') {
+        stripped += char
+        continue
       }
       stripped += char
       continue

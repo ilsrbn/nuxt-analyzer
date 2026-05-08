@@ -49,7 +49,7 @@ func (h *HybridBridge) Parse(files []string, autoImportNames []string) ([]Parsed
 		switch strings.ToLower(filepath.Ext(file)) {
 		case ".vue":
 			vueFiles = append(vueFiles, file)
-		case ".ts", ".tsx", ".jsx":
+		case ".ts", ".tsx", ".jsx", ".js", ".mjs", ".cjs":
 			tsFiles = append(tsFiles, file)
 		}
 	}

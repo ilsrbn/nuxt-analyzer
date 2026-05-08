@@ -90,15 +90,15 @@ func InferType(relPath string) NodeType {
 	path := normalizeRelPath(relPath)
 
 	pathSegments := strings.Split(path, "/")
-	for i := len(pathSegments) - 1; i >= 0; i-- {
+	for i := 0; i < len(pathSegments); i++ {
 		if pathSegments[i] == "app.vue" && i == len(pathSegments)-1 {
 			return NodeTypeComponent
 		}
 		switch pathSegments[i] {
-		case "components":
-			return NodeTypeComponent
 		case "pages":
 			return NodeTypePage
+		case "components":
+			return NodeTypeComponent
 		case "layouts":
 			return NodeTypeLayout
 		case "composables":

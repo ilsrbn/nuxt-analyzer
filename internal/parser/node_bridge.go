@@ -41,6 +41,8 @@ func newNodeBridge() (*Bridge, func(), error) {
 			return
 		}
 
+		b.tempDir = dir
+
 		parserPath := filepath.Join(dir, "parser.bundle.js")
 		if err := os.WriteFile(parserPath, assets.ParserBundle, 0o644); err != nil {
 			b.initErr = fmt.Errorf("write parser bundle: %w", err)
@@ -48,7 +50,6 @@ func newNodeBridge() (*Bridge, func(), error) {
 		}
 
 		b.parserPath = parserPath
-		b.tempDir = dir
 		b.runCmd = defaultRunCmd
 	})
 

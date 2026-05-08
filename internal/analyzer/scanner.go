@@ -25,7 +25,7 @@ func Scan(projectRoot string, includeTests bool) ([]FileInfo, error) {
 	err = filepath.WalkDir(absRoot, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			if os.IsPermission(walkErr) || os.IsNotExist(walkErr) {
-				if d.IsDir() {
+				if d != nil && d.IsDir() {
 					return filepath.SkipDir
 				}
 				return nil

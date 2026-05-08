@@ -33,7 +33,7 @@ func (b Builder) Build(files []FileInfo, bridge parseBridge) (*Graph, []BuildErr
 	// Load Nuxt auto-import map from .nuxt/imports.d.ts; best-effort, ignored on error.
 	autoImportMap, err := nuxt.LoadAutoImportMap(b.ProjectRoot)
 	if err != nil {
-		return nil, nil, fmt.Errorf("load auto-import map: %w", err)
+		autoImportMap = make(map[string]string)
 	}
 	autoImportNames := make([]string, 0, len(autoImportMap))
 	for name := range autoImportMap {
@@ -219,6 +219,16 @@ func resolveToNodeID(nodes map[string]*Node, relPath string) (string, bool) {
 		relPath,
 		relPath + "/index.vue",
 		relPath + "/index.ts",
+		relPath + ".js",
+		relPath + ".mjs",
+		relPath + ".cjs",
+		relPath + ".tsx",
+		relPath + ".jsx",
+		relPath + "/index.js",
+		relPath + "/index.mjs",
+		relPath + "/index.cjs",
+		relPath + "/index.tsx",
+		relPath + "/index.jsx",
 	}
 
 	for _, candidate := range candidates {
@@ -233,9 +243,9 @@ func resolveToNodeID(nodes map[string]*Node, relPath string) (string, bool) {
 
 func relPathToRoute(relPath string) string {
 	route := filepath.ToSlash(relPath)
-	lastPagesIdx := strings.LastIndex(route, "pages/")
-	if lastPagesIdx >= 0 {
-		route = route[lastPagesIdx+len("pages/"):]
+	pagesIdx := strings.Index(route, "pages/")
+	if pagesIdx >= 0 {
+		route = route[pagesIdx+len("pages/"):]
 	}
 	route = strings.TrimSuffix(route, filepath.Ext(route))
 	if route == "index" {
