@@ -215,6 +215,8 @@ main() {
 
   echo
   info "Installed path: $installed_path"
+  info "Installed version: $("$installed_path" version)"
+  info "Upgrade later with: $BINARY upgrade"
   info "Try: $BINARY --help"
 }
 
